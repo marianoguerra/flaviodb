@@ -661,13 +661,13 @@ second position of the tuple we send the response back, which contains the
 addition as first item and the partition on as seconds, this just to keep track
 of the routing, it's not needed to return it.
 
-now stop your current instance if you have one running and build a new release:
+now stop your current instance if you have one running and build a new release::
 
     rm -rf rel/flavio
     make rel
 
 
-now let's play a little with it:
+now let's play a little with it::
 
     $ ./rel/flavio/bin/flavio console
 
@@ -762,7 +762,7 @@ and then we reply as before but we pass NewState as third item:
 
         {reply, {A + B, State#state.partition}, NewState};
 
-rebuild and run:
+rebuild and run::
 
     $ rm -rf rel/flavio && make rel && ./rel/flavio/bin/flavio console
 
@@ -875,7 +875,7 @@ second is the coverage call response.
 in this case I return a `proplist <http://www.erlang.org/doc/man/proplists.html>`_ just
 to future proof this call and allow to return more information in the future.
 
-now we rebuild and run the release to play with it:
+now we rebuild and run the release to play with it::
 
     $ rm -rf rel/flavio && make rel && ./rel/flavio/bin/flavio console
 
@@ -1022,7 +1022,7 @@ which is implemented as follows:
         after Timeout -> {error, timeout}
         end.
 
-let's rebuild and use it:
+let's rebuild and use it::
 
     $ rm -rf rel/flavio && make rel && ./rel/flavio/bin/flavio console
 
