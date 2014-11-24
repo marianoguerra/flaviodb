@@ -127,7 +127,9 @@ there are also some detailed articles about it:
 * https://github.com/basho/riak_core/wiki
 * http://basho.com/where-to-start-with-riak-core/
 
-but let's look at what it does line by line::
+but let's look at what it does line by line:
+
+.. code:: erlang
 
         DocIdx = riak_core_util:chash_key({<<"ping">>, term_to_binary(now())}),
 
@@ -137,48 +139,58 @@ instances of your app, vnodes move from instance to instance when the number of
 instances change to balance the load and have fault tolerance and scalability.
 
 The call above will allow us to ask for vnodes that can handle that hashed key,
-let's run it in the app console to see what it does::
+let's run it in the app console to see what it does:
+
+.. code:: erlang
 
     (flavio@127.0.0.1)1> DocIdx = riak_core_util:chash_key({<<"ping">>, term_to_binary(now())}).
     <<207,185,91,89,64,167,168,83,113,154,212,211,27,36,113, 251,56,179,28,123>>
 
 we seem to get a binary back, in the next line we ask for a list of vnodes that
-can handle that hashed key::
+can handle that hashed key:
+
+.. code:: erlang
 
         PrefList = riak_core_apl:get_primary_apl(DocIdx, 1, flavio),
 
-let's run it to see what it does::
+let's run it to see what it does:
+
+.. code:: erlang
 
     (flavio@127.0.0.1)2> PrefList = riak_core_apl:get_primary_apl(DocIdx, 1, flavio).
-    [{{1187470080331358621040493926581979953470445191168,
-    'flavio@127.0.0.1'},
-    primary}]
+
+    [{{1187470080331358621040493926581979953470445191168, 'flavio@127.0.0.1'}, primary}]
 
 we get a list with one tuple that has 3 items, a long number, something that looks like a hist
-and an atom, let's try changing the number 1::
+and an atom, let's try changing the number 1:
+
+.. code:: erlang
 
     (flavio@127.0.0.1)4> PrefList2 = riak_core_apl:get_primary_apl(DocIdx, 2, flavio).
-    [{{1187470080331358621040493926581979953470445191168,
-       'flavio@127.0.0.1'},
-      primary},
-     {{1210306043414653979137426502093171875652569137152,
-       'flavio@127.0.0.1'},
-      primary}]
+
+    [{{1187470080331358621040493926581979953470445191168, 'flavio@127.0.0.1'}, primary},
+     {{1210306043414653979137426502093171875652569137152, 'flavio@127.0.0.1'}, primary}]
 
 now we get two tuples, the first one is the same, so what this does is to return
 the number of vnodes that can handle the request from the hashed key by priority.
 
 btw, the first number is the vnode id, it's what we get on the ping response :)
 
-next line just unpacks the pref list to get the vnode id and ignore the other part::
+next line just unpacks the pref list to get the vnode id and ignore the other part:
+
+.. code:: erlang
 
         [{IndexNode, _Type}] = PrefList,
 
-and finally we ask riak_core to call the ping command on the IndexNode we got back::
+and finally we ask riak_core to call the ping command on the IndexNode we got back:
+
+.. code:: erlang
 
         riak_core_vnode_master:sync_spawn_command(IndexNode, ping, flavio_vnode_master).
 
-let's try it on the console::
+let's try it on the console:
+
+.. code:: erlang
 
     (flavio@127.0.0.1)5> [{IndexNode, _Type}] = PrefList.
     [{{1187470080331358621040493926581979953470445191168, 'flavio@127.0.0.1'}, primary}]
@@ -186,7 +198,9 @@ let's try it on the console::
     (flavio@127.0.0.1)6> riak_core_vnode_master:sync_spawn_command(IndexNode, ping, flavio_vnode_master).
     {pong,1187470080331358621040493926581979953470445191168}
 
-you can see we get IndexNode back in the pong response, now let's try passing the second IndexNode::
+you can see we get IndexNode back in the pong response, now let's try passing the second IndexNode:
+
+.. code:: erlang
 
     (flavio@127.0.0.1)7> [{IndexNode1, _Type1}, {IndexNode2, _Type2}] = PrefList2.
     [{{1187470080331358621040493926581979953470445191168, 'flavio@127.0.0.1'}, primary},
@@ -202,7 +216,9 @@ but where does the command go? the road is explained in this scientific chart::
 
     flavio.erl -> riak_core magic -> flavio_vnode.erl
 
-let's see the content of flavio_vnode.erl (just the useful parts)::
+let's see the content of flavio_vnode.erl (just the useful parts):
+
+.. code:: erlang
 
     -module(flavio_vnode).
     -behaviour(riak_core_vnode).
@@ -238,11 +254,15 @@ let's see the content of flavio_vnode.erl (just the useful parts)::
         ?PRINT({unhandled_command, Message}),
         {noreply, State}.
 
-ok, let's go by parts, first we declare our module::
+ok, let's go by parts, first we declare our module:
+
+.. code:: erlang
 
     -module(flavio_vnode).
 
-then we specify that we want to implement the riak_core_vnode behaviour::
+then we specify that we want to implement the riak_core_vnode behaviour:
+
+.. code:: erlang
 
     -behaviour(riak_core_vnode).
 
@@ -253,7 +273,9 @@ http://www.erlang.org/doc/design_principles/des_princ.html
 
 in this case riak_core defines a behaviour with a set of functions we must
 implement to be a valid riak_core vnode, you can get an idea of the kind of
-functionality we need by looking at the exported functions::
+functionality we need by looking at the exported functions:
+
+.. code:: erlang
 
     -export([start_vnode/1,
              init/1,
@@ -275,24 +297,32 @@ the minimal amount of work to satisfy the behaviour and not more, it's our job
 to change the default implementation to fit our needs.
 
 we will have a record called state to keep info between callbacks, this is
-typical erlang way of managing state so I won't cover it here::
+typical erlang way of managing state so I won't cover it here:
+
+.. code:: erlang
 
     -record(state, {partition}).
 
-then we implement the api to start the vnode, nothing fancy::
+then we implement the api to start the vnode, nothing fancy:
+
+.. code:: erlang
 
     %% API
     start_vnode(I) ->
         riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
 note that on init we store the Partition value on state so we can use it later,
-this is what I referred above as vnode id, it's the big number you saw before::
+this is what I referred above as vnode id, it's the big number you saw before:
+
+.. code:: erlang
 
     init([Partition]) ->
         {ok, #state { partition=Partition }}.
 
 and now for the interesting part, here we have our ping command implementation,
-we match for ping in the Message position (the first argument)::
+we match for ping in the Message position (the first argument):
+
+.. code:: erlang
 
     handle_command(ping, _Sender, State) ->
 
@@ -300,12 +330,16 @@ and return a reply response with the second item in the tuple being the actual
 response that the caller will get where we reply with the atom pong and the
 partition number of this vnode, the last item in the tuple is the new state we
 want to have for this vnode, since we didn't change anything we pass the
-current value::
+current value:
+
+.. code:: erlang
 
         {reply, {pong, State#state.partition}, State};
 
 and then we implement a catch all that will just print the unknown command and
-give no reply back::
+give no reply back:
+
+.. code:: erlang
 
     handle_command(Message, _Sender, State) ->
         ?PRINT({unhandled_command, Message}),
@@ -333,43 +367,55 @@ you can read more about devrel here:
 
 https://github.com/basho/rebar_riak_core#devrel
 
-first stop your running instance if you still have it running, then run::
+first stop your running instance if you still have it running, then run:
+
+.. code:: shell
 
     make devrel
 
-you can see at the end of the output something similar to this::
+you can see at the end of the output something similar to this:
+
+.. code:: shell
 
     mkdir -p dev
     rel/gen_dev dev1 rel/vars/dev_vars.config.src rel/vars/dev1_vars.config
     Generating dev1 - node='flavio1@127.0.0.1' http=10018 handoff=10019
     (cd rel && /home/mariano/src/rct/flaviodb/rebar generate target_dir=../dev/dev1 overlay_vars=vars/dev1_vars.config)
     ==> rel (generate)
+
     mkdir -p dev
     rel/gen_dev dev2 rel/vars/dev_vars.config.src rel/vars/dev2_vars.config
     Generating dev2 - node='flavio2@127.0.0.1' http=10028 handoff=10029
     (cd rel && /home/mariano/src/rct/flaviodb/rebar generate target_dir=../dev/dev2 overlay_vars=vars/dev2_vars.config)
     ==> rel (generate)
+
     mkdir -p dev
     rel/gen_dev dev3 rel/vars/dev_vars.config.src rel/vars/dev3_vars.config
     Generating dev3 - node='flavio3@127.0.0.1' http=10038 handoff=10039
     (cd rel && /home/mariano/src/rct/flaviodb/rebar generate target_dir=../dev/dev3 overlay_vars=vars/dev3_vars.config)
     ==> rel (generate)
+
     mkdir -p dev
     rel/gen_dev dev4 rel/vars/dev_vars.config.src rel/vars/dev4_vars.config
     Generating dev4 - node='flavio4@127.0.0.1' http=10048 handoff=10049
     (cd rel && /home/mariano/src/rct/flaviodb/rebar generate target_dir=../dev/dev4 overlay_vars=vars/dev4_vars.config)
+    ==> rel (generate)
 
 you can see it generated 4 builds (dev1 ... dev4) and that it assigned different names
 (flavio1 ... flavio4) and assigned different ports for http and handoff.
 
-now let's start them::
+now let's start them:
+
+.. code:: shell
 
     for d in dev/dev*; do $d/bin/flavio start; done
 
 now instead of starting and connecting to a console as before we just started
 the nodes, but how do we know they are running?
 
-welp, we can ping them from the command line tool that the template kindly provides to us::
+welp, we can ping them from the command line tool that the template kindly provides to us:
+
+.. code:: shell
 
     for d in dev/dev*; do $d/bin/flavio ping; done
 
@@ -383,7 +429,9 @@ we should see 4 individual pong replies::
 but we don't have a cluster yet, because each instance is running unaware of the others, to make them
 an actual cluster we have to make them aware of each other.
 
-you can see that they aren't aware by asking any of them about the status of its members::
+you can see that they aren't aware by asking any of them about the status of its members:
+
+.. code:: shell
 
     $ dev/dev1/bin/flavio-admin member-status
 
@@ -394,7 +442,9 @@ you can see that they aren't aware by asking any of them about the status of its
     -------------------------------------------------------------------------------
     Valid:1 / Leaving:0 / Exiting:0 / Joining:0 / Down:0
 
-you see flavio1 "cluster" has only one node in it (itself), try with another::
+you see flavio1 "cluster" has only one node in it (itself), try with another:
+
+.. code:: shell
 
     $ dev/dev4/bin/flavio-admin member-status
 
@@ -407,7 +457,9 @@ you see flavio1 "cluster" has only one node in it (itself), try with another::
 
 note dev4 instead of dev1 in the command.
 
-now we will ask nodes 2, 3 and 4 to join node 1 on a cluster::
+now we will ask nodes 2, 3 and 4 to join node 1 on a cluster:
+
+.. code:: shell
 
     $ for d in dev/dev{2,3,4}; do $d/bin/flavio-admin cluster join flavio1@127.0.0.1; done
 
@@ -415,7 +467,9 @@ now we will ask nodes 2, 3 and 4 to join node 1 on a cluster::
     Success: staged join request for 'flavio3@127.0.0.1' to 'flavio1@127.0.0.1'
     Success: staged join request for 'flavio4@127.0.0.1' to 'flavio1@127.0.0.1'
 
-check again the cluster status::
+check again the cluster status:
+
+.. code:: shell
 
     $ dev/dev1/bin/flavio-admin member-status
 
@@ -430,7 +484,9 @@ check again the cluster status::
     Valid:1 / Leaving:0 / Exiting:0 / Joining:3 / Down:0dev/dev1/bin/flavio-admin member-status
 
 they are joining, because we have to approve cluster changes, let's look what's
-the plan::
+the plan:
+
+.. code:: shell
 
     $ dev/dev1/bin/flavio-admin cluster plan
 
@@ -464,13 +520,17 @@ the plan::
       16 transfers from 'flavio1@127.0.0.1' to 'flavio3@127.0.0.1'
       16 transfers from 'flavio1@127.0.0.1' to 'flavio2@127.0.0.1'
 
-looks good to me, let's commit that plan so it actually happens::
+looks good to me, let's commit that plan so it actually happens:
+
+.. code:: shell
 
     $ dev/dev1/bin/flavio-admin cluster commit
 
     Cluster changes committed
 
-let's see the cluster status again::
+let's see the cluster status again:
+
+.. code:: shell
 
     $ dev/dev1/bin/flavio-admin member-status
 
@@ -488,19 +548,27 @@ let's see the cluster status again::
 now the cluster has 4 nodes which have the ring distributed equally :)
 
 to just be sure it's not all a lie, let's connect to some nodes and run the
-ping again, first from node 1::
+ping again, first from node 1:
+
+.. code:: shell
 
     $ dev/dev1/bin/flavio attach
     Attaching to /tmp//home/mariano/src/rct/flaviodb/dev/dev1/erlang.pipe.1 (^D to exit)
+
+.. code:: erlang
 
     (flavio1@127.0.0.1)1> flavio:ping().
     {pong,822094670998632891489572718402909198556462055424}
     (flavio1@127.0.0.1)2> [Quit]
 
-now from node 3::
+now from node 3:
+
+.. code:: shell
 
     $ dev/dev3/bin/flavio attach
     Attaching to /tmp//home/mariano/src/rct/flaviodb/dev/dev3/erlang.pipe.1 (^D to exit)
+
+.. code:: erlang
 
     (flavio3@127.0.0.1)1> flavio:ping()
     (flavio3@127.0.0.1)1> .
@@ -521,16 +589,22 @@ our command will start simply by adding two numbers and returning the result
 and the vnode that calculated the result.
 
 let's start by defining our new command from the user's perspective, we want to
-be able to run::
+be able to run:
+
+.. code:: erlang
 
     flavio:add(2, 5).
 
 and get our result back, so let's add the add function to the flavio module,
-first we add it to the list of the exported functions::
+first we add it to the list of the exported functions:
+
+.. code:: erlang
 
     -export([ping/0, add/2]).
 
-and then we add our implementation starting from the ping version::
+and then we add our implementation starting from the ping version:
+
+.. code:: erlang
 
     add(A, B) ->
         DocIdx = riak_core_util:chash_key({<<"add">>, term_to_binary({A, B})}),
@@ -539,7 +613,9 @@ and then we add our implementation starting from the ping version::
         riak_core_vnode_master:sync_spawn_command(IndexNode, {add, A, B}, flavio_vnode_master).
 
 the changes are, the name (of course), the parameters it accepts, in our case it accepts two numbers,
-but more subtle changes are in the following line::
+but more subtle changes are in the following line:
+
+.. code:: erlang
 
         DocIdx = riak_core_util:chash_key({<<"add">>, term_to_binary({A, B})}),
 
@@ -552,12 +628,16 @@ means that if we want to add the same two numbers we will be routed to the same
 vnodes every time, this is part of the "consistent hashing" you may have heard
 about riak_core, we will try it in action later, but for now let's move to the next lines.
 
-this two stay the same::
+this two stay the same:
+
+.. code:: erlang
 
         PrefList = riak_core_apl:get_primary_apl(DocIdx, 1, flavio),
         [{IndexNode, _Type}] = PrefList,
 
-but the last one changed slightly::
+but the last one changed slightly:
+
+.. code:: erlang
 
         riak_core_vnode_master:sync_spawn_command(IndexNode, {add, A, B}, flavio_vnode_master).
 
@@ -569,7 +649,9 @@ the message with the commands it understands and acts accordingly.
 
 in our case now we must match this message/command on the vnode implementation,
 this should be really easy, on flavio_vnode.erl we add the following clause to
-the existing handle_command function::
+the existing handle_command function:
+
+.. code:: erlang
 
     handle_command({add, A, B}, _Sender, State) ->
         {reply, {A + B, State#state.partition}, State};
@@ -579,15 +661,17 @@ second position of the tuple we send the response back, which contains the
 addition as first item and the partition on as seconds, this just to keep track
 of the routing, it's not needed to return it.
 
-now stop your current instance if you have one running and build a new release::
+now stop your current instance if you have one running and build a new release:
 
     rm -rf rel/flavio
     make rel
 
 
-now let's play a little with it::
+now let's play a little with it:
 
     $ ./rel/flavio/bin/flavio console
+
+.. code:: erlang
 
     (flavio@127.0.0.1)1> flavio:add(2, 5).
     {7,959110449498405040071168171470060731649205731328}
@@ -636,39 +720,53 @@ for this we will increment a operations counter on each vnode when an operation
 is made and we will provide a way to retrieve this information as another
 command.
 
-first let's start by adding a new field to our state record to keep the count::
+first let's start by adding a new field to our state record to keep the count:
+
+.. code:: erlang
 
     -record(state, {partition, ops_count=0}).
 
 and then when we receive an addition command we increment the count and return
 the new state in the 3 item tuple so that this new state becomes the vnode
-state::
+state:
+
+.. code:: erlang
 
     handle_command({add, A, B}, _Sender, State=#state{ops_count=CurrentCount}) ->
         NewCount = CurrentCount + 1,
         NewState = State#state{ops_count=NewCount},
         {reply, {A + B, State#state.partition}, NewState};
 
-line by line, first we match the current ops_count::
+line by line, first we match the current ops_count:
+
+.. code:: erlang
 
     handle_command({add, A, B}, _Sender, State=#state{ops_count=CurrentCount}) ->
 
-then calculate the new count::
+then calculate the new count:
+
+.. code:: erlang
 
         NewCount = CurrentCount + 1,
 
 then create the new state record that is the same as the old one but with the
-new count::
+new count:
+
+.. code:: erlang
 
         NewState = State#state{ops_count=NewCount},
 
-and then we reply as before but we pass NewState as third item::
+and then we reply as before but we pass NewState as third item:
+
+.. code:: erlang
 
         {reply, {A + B, State#state.partition}, NewState};
 
-rebuild and run::
+rebuild and run:
 
     $ rm -rf rel/flavio && make rel && ./rel/flavio/bin/flavio console
+
+.. code:: erlang
 
     (flavio@127.0.0.1)1> flavio:add(2, 5).
     {7,959110449498405040071168171470060731649205731328}
@@ -684,11 +782,15 @@ can we ask all vnodes for this info?
 well yes we can, it's called a coverage call, and it's a call that involves all
 the vnodes
 
-first we add the stats function to the export list::
+first we add the stats function to the export list:
+
+.. code:: erlang
 
     -export([ping/0, add/2, stats/0]).
 
-now we add the implementation::
+now we add the implementation:
+
+.. code:: erlang
 
     stats() ->
         Timeout = 5000,
@@ -729,7 +831,9 @@ on your own, there's a lot of useful information about it on the Erlang docs, bo
 and in Learn You Some Erlang.
 
 to add this supervisor to the supervisor tree we must edit the file
-flavio_sup.erl and add the following::
+flavio_sup.erl and add the following:
+
+.. code:: erlang
 
     init(_Args) ->
         VMaster = { flavio_vnode_master,
@@ -747,7 +851,9 @@ we added the CoverageFSMs definition and we added it to the list on the last
 line.
 
 the part that's interesting to us is the api call and the callback that must be
-implemented in the vnode, which goes as follows::
+implemented in the vnode, which goes as follows:
+
+.. code:: erlang
 
     handle_coverage(stats, _KeySpaces, {_, RefId, _}, State=#state{ops_count=OpsCount}) ->
         {reply, {RefId, [{ops_count, OpsCount}]}, State};
@@ -769,9 +875,11 @@ second is the coverage call response.
 in this case I return a `proplist <http://www.erlang.org/doc/man/proplists.html>`_ just
 to future proof this call and allow to return more information in the future.
 
-now we rebuild and run the release to play with it::
+now we rebuild and run the release to play with it:
 
     $ rm -rf rel/flavio && make rel && ./rel/flavio/bin/flavio console
+
+.. code:: erlang
 
     (flavio@127.0.0.1)1> flavio:stats().
     {ok,[ lot of output here]}
@@ -840,8 +948,9 @@ this: {RefId, Op} where Op is the two item tuple we passed to flavio_op_fsm:op.
 
 flavio_op_fsm_sup is as generic as any fsm supervisor can get.
 
-finally we register this new supervisor in our main supervisor tree in flavio_sup.erl::
+finally we register this new supervisor in our main supervisor tree in flavio_sup.erl:
 
+.. code:: erlang
 
     init(_Args) ->
         VMaster = { flavio_vnode_master,
@@ -863,7 +972,9 @@ as before we add the OpFSMs definition and we add it to the list in the last
 line.
 
 we need to modify our vnode handle_command to handle the new command
-format, that includes the RefId and has the parameters inside a tuple::
+format, that includes the RefId and has the parameters inside a tuple:
+
+.. code:: erlang
 
     handle_command({RefId, {add, {A, B}}}, _Sender, State=#state{ops_count=CurrentCount}) ->
         NewCount = CurrentCount + 1,
@@ -871,7 +982,9 @@ format, that includes the RefId and has the parameters inside a tuple::
         {reply, {RefId, {A + B, State#state.partition}}, NewState};
 
 and now instead of calculating the vnode ourselves we let out new flavio_op_fsm
-take care of the call by changing the flavio:add implementation::
+take care of the call by changing the flavio:add implementation:
+
+.. code:: erlang
 
     add(A, B) ->
         N = 3,
@@ -888,24 +1001,32 @@ we fail with a timeout error.
 the following line sends the desired N, W and the command in the new format, we
 get back a request id we must wait for, we will receive a message to this
 process with that ReqID and the result when all the requests finished or with
-the error in case it failed or timed out::
+the error in case it failed or timed out:
+
+.. code:: erlang
 
         {ok, ReqID} = flavio_op_fsm:op(N, W, {add, {A, B}}),
 
-to wait for the result we implement a function to do it for use::
+to wait for the result we implement a function to do it for use:
+
+.. code:: erlang
 
     wait_for_reqid(ReqID, Timeout).
 
-which is implemented as follows::
+which is implemented as follows:
+
+.. code:: erlang
 
     wait_for_reqid(ReqID, Timeout) ->
         receive {ReqID, Val} -> {ok, Val}
         after Timeout -> {error, timeout}
         end.
 
-let's rebuild and use it::
+let's rebuild and use it:
 
     $ rm -rf rel/flavio && make rel && ./rel/flavio/bin/flavio console
+
+.. code:: erlang
 
     (flavio@127.0.0.1)1> flavio:add(2, 4).
     {ok,[{6,433883298582611803841718934712646521460354973696},
