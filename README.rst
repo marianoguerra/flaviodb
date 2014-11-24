@@ -133,7 +133,7 @@ let's run it in the app console to see what it does::
     <<207,185,91,89,64,167,168,83,113,154,212,211,27,36,113, 251,56,179,28,123>>
 
 we seem to get a binary back, in the next line we ask for a list of vnodes that
-can handle that hashed key:
+can handle that hashed key::
 
         PrefList = riak_core_apl:get_primary_apl(DocIdx, 1, flavio),
 
@@ -755,7 +755,7 @@ all the calls and we also get from our state the info we are going to reply.
 we reply with a two item tuple where the first item is the RefId we got and the
 second is the coverage call response.
 
-in this case I return a `proplist <www.erlang.org/doc/man/proplists.html>`_ just
+in this case I return a `proplist <http://www.erlang.org/doc/man/proplists.html>`_ just
 to future proof this call and allow to return more information in the future.
 
 now we rebuild and run the release to play with it::
@@ -877,7 +877,7 @@ we fail with a timeout error.
 the following line sends the desired N, W and the command in the new format, we
 get back a request id we must wait for, we will receive a message to this
 process with that ReqID and the result when all the requests finished or with
-the error in case it failed or timed out:
+the error in case it failed or timed out::
 
         {ok, ReqID} = flavio_op_fsm:op(N, W, {add, {A, B}}),
 
