@@ -4,7 +4,7 @@ FlavioDB
 Setup rebar riak_core template
 ------------------------------
 
-::
+.. code:: shell
 
     git clone https://github.com/basho/rebar_riak_core.git
     cd rebar_riak_core
@@ -13,7 +13,7 @@ Setup rebar riak_core template
 Create project template
 -----------------------
 
-::
+.. code:: shell
 
     mkdir flaviodb
     cd flaviodb
@@ -37,7 +37,7 @@ flag on the last line.
 Trying to build it
 ------------------
 
-::
+.. code:: shell
 
     make rel
 
@@ -47,12 +47,15 @@ know a better way.
 
 the solution is to remove the warnings_as_errors config flag on rebar.config
 directly on the rebar.config for that dependency, I did a script you can run
-to fix this, run it once after you fetched the dependencies::
+to fix this, run it once after you fetched the dependencies:
+
+.. code:: shell
 
     ./util/fix_deps_warnings_as_errors.sh
 
-if you ran the command above try building again::
+if you ran the command above try building again:
 
+.. code:: shell
 
     make rel
 
@@ -63,12 +66,17 @@ now what?
 Running a node
 --------------
 
-now that we managed to build it let's start a node::
+now that we managed to build it let's start a node:
+
+.. code:: shell
 
     ./rel/flavio/bin/flavio console
 
-but what can we do with it? well we can ping it::
+but what can we do with it? well we can ping it:
 
+.. code:: erlang
+
+    ./rel/flavio/bin/flavio console
 
     (flavio@127.0.0.1)1> flavio:ping().
     {pong,1210306043414653979137426502093171875652569137152}
@@ -82,7 +90,9 @@ now that we have the basic riak_core project running let's follow the ping on
 it's way from call to response.
 
 it's entry point and public api is the flavio module, that means we have to
-look into flavio.erl::
+look into flavio.erl:
+
+.. code:: erlang
 
     -module(flavio).
     -include("flavio.hrl").
