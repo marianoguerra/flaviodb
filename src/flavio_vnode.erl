@@ -65,8 +65,11 @@ is_empty(State) ->
 delete(State) ->
     {ok, State}.
 
-handle_coverage(_Req, _KeySpaces, _Sender, State) ->
-    {stop, not_implemented, State}.
+handle_coverage(stats, _KeySpaces, {_, RefId, _}, State=#state{ops_count=OpsCount}) ->
+    {reply, {RefId, [{ops_count, OpsCount}]}, State};
+handle_coverage(Req, _KeySpaces, _Sender, State) ->
+    lager:warning("unknown coverage received ~p", [Req]),
+    {norepl, State}.
 
 handle_exit(_Pid, _Reason, State) ->
     {noreply, State}.

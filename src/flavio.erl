@@ -2,9 +2,9 @@
 -include("flavio.hrl").
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
--export([ping/0, add/2]).
+-export([ping/0, add/2, stats/0]).
 
--ignore_xref([ping/0, add/2]).
+-ignore_xref([ping/0, add/2, stats/0]).
 
 %% Public API
 
@@ -20,3 +20,7 @@ add(A, B) ->
     PrefList = riak_core_apl:get_primary_apl(DocIdx, 1, flavio),
     [{IndexNode, _Type}] = PrefList,
     riak_core_vnode_master:sync_spawn_command(IndexNode, {add, A, B}, flavio_vnode_master).
+
+stats() ->
+    Timeout = 5000,
+    flavio_coverage_fsm:start(stats, Timeout).
