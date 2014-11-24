@@ -1,0 +1,7 @@
+*.beam
+.eunit
+deps/*
+ebin/*
+rel/flavio
+dev
+apps/flavio/src/*
