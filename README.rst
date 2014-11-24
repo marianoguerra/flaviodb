@@ -1,7 +1,7 @@
-Flaviodb
+FlavioDB
 ========
 
-setup rebar riak_core template
+Setup rebar riak_core template
 ------------------------------
 
 ::
@@ -10,7 +10,7 @@ setup rebar riak_core template
     cd rebar_riak_core
     make install
 
-create project template
+Create project template
 -----------------------
 
 ::
@@ -24,7 +24,7 @@ create project template
     # create project from riak_core template with app id set to flavio
     ./rebar create template=riak_core appid=flavio
 
-update riak_core version to 2.0.0
+Update riak_core version to 2.0.0
 ---------------------------------
 
 we change the version on deps, riak_core and lager here:
@@ -34,7 +34,7 @@ https://github.com/marianoguerra/flaviodb/commit/6ae8f8b83c3d15346ea35a586dbe624
 note we also updated lager version to 2.0.3 and removed the warnings_as_errors
 flag on the last line.
 
-trying to build it
+Trying to build it
 ------------------
 
 ::
@@ -60,7 +60,7 @@ success!
 
 now what?
 
-running a node
+Running a node
 --------------
 
 now that we managed to build it let's start a node::
@@ -75,7 +75,7 @@ but what can we do with it? well we can ping it::
 
 now you have a distributed, scalable and fault-tolerant ping service!
 
-the road of the ping
+The road of the ping
 --------------------
 
 now that we have the basic riak_core project running let's follow the ping on
@@ -283,6 +283,7 @@ this is what I referred above as vnode id, it's the big number you saw before::
 
 and now for the interesting part, here we have our ping command implementation,
 we match for ping in the Message position (the first argument)::
+
     handle_command(ping, _Sender, State) ->
 
 and return a reply response with the second item in the tuple being the actual
@@ -311,7 +312,7 @@ riak_core.
 in our case we have all the vnodes on the same instance and on the same machine
 so that's not that distributed, let's try running more than one node.
 
-creating a local cluster
+Creating a local cluster
 ------------------------
 
 to create a local cluster we will need to create and start N different builds
@@ -498,7 +499,7 @@ now from node 3::
 
 note that we got the reply from a different vnode the second time.
 
-adding a command
+Adding a command
 ----------------
 
 first let's add a simple command to get the workflow right.
@@ -614,7 +615,7 @@ a design decision you have to make.
 
 the full change is here: https://github.com/marianoguerra/flaviodb/commit/8e0fb2460791651fcc1aa5cd957b535437d07095
 
-keeping some state
+Keeping some state
 ------------------
 
 this operations are stateless so it doesn't make much sense to route them
@@ -797,7 +798,7 @@ a value bigger than 0 and that matches the calls we did above.
 
 the full change is here: https://github.com/marianoguerra/flaviodb/commit/9b6ef0ea2b9f0257733024b1468016a5d96b713c
 
-tolerating faults in our additions (?)
+Tolerating faults in our additions (?)
 --------------------------------------
 
 you know computers cannot be trusted, so we may want to run our commands in
