@@ -16,11 +16,20 @@ ping() ->
     riak_core_vnode_master:sync_spawn_command(IndexNode, ping, flavio_vnode_master).
 
 add(A, B) ->
-    DocIdx = riak_core_util:chash_key({<<"add">>, term_to_binary({A, B})}),
-    PrefList = riak_core_apl:get_primary_apl(DocIdx, 1, flavio),
-    [{IndexNode, _Type}] = PrefList,
-    riak_core_vnode_master:sync_spawn_command(IndexNode, {add, A, B}, flavio_vnode_master).
+    N = 3,
+    W = 3,
+    Timeout = 5000,
+
+    {ok, ReqID} = flavio_op_fsm:op(N, W, {add, {A, B}}),
+    wait_for_reqid(ReqID, Timeout).
 
 stats() ->
     Timeout = 5000,
     flavio_coverage_fsm:start(stats, Timeout).
+
+%% Private API
+
+wait_for_reqid(ReqID, Timeout) ->
+    receive {ReqID, Val} -> {ok, Val}
+    after Timeout -> {error, timeout}
+    end.

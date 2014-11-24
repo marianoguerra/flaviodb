@@ -33,10 +33,10 @@ init([Partition]) ->
 %% Sample command: respond to a ping
 handle_command(ping, _Sender, State) ->
     {reply, {pong, State#state.partition}, State};
-handle_command({add, A, B}, _Sender, State=#state{ops_count=CurrentCount}) ->
+handle_command({RefId, {add, {A, B}}}, _Sender, State=#state{ops_count=CurrentCount}) ->
     NewCount = CurrentCount + 1,
     NewState = State#state{ops_count=NewCount},
-    {reply, {A + B, State#state.partition}, NewState};
+    {reply, {RefId, {A + B, State#state.partition}}, NewState};
 handle_command(Message, _Sender, State) ->
     ?PRINT({unhandled_command, Message}),
     {noreply, State}.
