@@ -21,14 +21,14 @@
              start_vnode/1
              ]).
 
--record(state, {partition, ops_count=0}).
+-record(state, {partition, ops_count=0, base_dir}).
 
 %% API
 start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
 init([Partition]) ->
-    {ok, #state { partition=Partition }}.
+    {ok, #state { partition=Partition, base_dir="flavio_data" }}.
 
 %% Sample command: respond to a ping
 handle_command(ping, _Sender, State) ->
@@ -40,9 +40,9 @@ handle_command({RefId, {add, {A, B}}}, _Sender, State=#state{ops_count=CurrentCo
     {reply, {RefId, {A + B, State#state.partition}}, NewState};
 
 handle_command({RefId, {post_msg, {Username, Stream, Msg}}}, _Sender,
-               State=#state{partition=Partition}) ->
+               State=#state{partition=Partition, base_dir=BaseDir}) ->
     PartitionStr = integer_to_list(Partition),
-    StreamPath = filename:join([PartitionStr, Username, Stream, "msgs"]),
+    StreamPath = filename:join([BaseDir, PartitionStr, Username, Stream, "msgs"]),
     ok = filelib:ensure_dir(StreamPath),
     {ok, StreamIo} = fixsttio:open(StreamPath),
     Entry = fixstt:new(Msg),
