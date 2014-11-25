@@ -1076,7 +1076,10 @@ so when a new message is posted we will hash {Username, Stream} and send the
 message to W vnodes and wait confirmation from N of them that they stored the
 message.
 
-so we are going to add a new function to flavio's API like this:
+Writing
+.......
+
+We are going to add a new function to flavio's API like this:
 
 .. code:: erlang
 
@@ -1212,10 +1215,16 @@ we can see that there are 3 instances of spanish and 3 of english.
 
 the full change is here: https://github.com/marianoguerra/flaviodb/commit/62ad84faa81d94c4057522d9da3b3c82df911dbb
 
+Cleanup
+.......
+
 just to do some cleanup we will create the partition folders inside a base
 directory so we don't fill the base rel/flaviodb directory with partition
 folders, later we can make this base directory configurable, the change is
 here: https://github.com/marianoguerra/flaviodb/commit/b33841758f254d8eb7a5e08c245e0274d74eb994
+
+Reading
+.......
 
 now we need to be able to read the messages for a given Username and Stream,
 for that we will implement a new function in the API that does something like:
@@ -1355,3 +1364,52 @@ opening and closing the file for each request, but that doesn't add anything
 useful to this guide, it may be implemented later as an optimization.
 
 full changes here: https://github.com/marianoguerra/flaviodb/commit/b0b74fbac07b542479ef8453434715c317251d4f
+
+Listing streams from a user
+...........................
+
+now that we have data on disc we can make use of the coverage calls for
+something more interesting, listing a user's streams, the call will be quite
+simple:
+
+.. code:: erlang
+
+    flavio:list_streams(Username).
+
+should return a list of all streams for that Username.
+
+again we are reusing a lot of code we already wrote so the api implementation is
+simply:
+
+.. code:: erlang
+
+    list_streams(Username) ->
+        Timeout = 5000,
+        flavio_coverage_fsm:start({list_streams, Username}, Timeout).
+
+and the implementation:
+
+.. code:: erlang
+
+    handle_coverage({list_streams, Username}, _KeySpaces, {_, RefId, _}, State) ->
+        Streams = lists:sort(list_streams(State, Username)),
+        {reply, {RefId, {ok, Streams}}, State};
+
+the implementation of list_streams is pretty straightforward you can see it in
+the commit.
+
+just to make the output less noisy, let's remove the responses that are empty lists so we only get the useful information:
+
+.. code:: erlang
+
+    list_streams(Username) ->
+        Timeout = 5000,
+        case flavio_coverage_fsm:start({list_streams, Username}, Timeout) of
+            {ok, Responses} ->
+                {ok, lists:filter(fun ({_Partition, _Node, {ok, []}}) -> false;
+                                 ({_Partition, _Node, _Streams}) -> true
+                             end, Responses)};
+            Other -> Other
+        end.
+
+full change here: https://github.com/marianoguerra/flaviodb/commit/5a2ca66103313541af605021428345fdf28d7336
