@@ -93,6 +93,10 @@ handle_coverage({list_streams, Username}, _KeySpaces, {_, RefId, _}, State) ->
     Streams = lists:sort(list_streams(State, Username)),
     {reply, {RefId, {ok, Streams}}, State};
 
+handle_coverage(list_users, _KeySpaces, {_, RefId, _}, State) ->
+    Users = lists:sort(list_users(State)),
+    {reply, {RefId, {ok, Users}}, State};
+
 handle_coverage(Req, _KeySpaces, _Sender, State) ->
     lager:warning("unknown coverage received ~p", [Req]),
     {norepl, State}.
@@ -110,6 +114,11 @@ list_dir(Path) ->
         {error, enoent} -> [];
         {ok, Names} -> Names
     end.
+
+list_users(#state{partition=Partition, base_dir=BaseDir}) ->
+    PartitionStr = integer_to_list(Partition),
+    Path = filename:join([BaseDir, PartitionStr]),
+    lists:map(fun list_to_binary/1, list_dir(Path)).
 
 list_streams(#state{partition=Partition, base_dir=BaseDir}, Username) ->
     PartitionStr = integer_to_list(Partition),
