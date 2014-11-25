@@ -17,9 +17,7 @@
          handle_coverage/4,
          handle_exit/3]).
 
--ignore_xref([
-             start_vnode/1
-             ]).
+-ignore_xref([start_vnode/1]).
 
 -record(state, {partition, ops_count=0, base_dir}).
 
@@ -90,6 +88,11 @@ delete(State) ->
 
 handle_coverage(stats, _KeySpaces, {_, RefId, _}, State=#state{ops_count=OpsCount}) ->
     {reply, {RefId, [{ops_count, OpsCount}]}, State};
+
+handle_coverage({list_streams, Username}, _KeySpaces, {_, RefId, _}, State) ->
+    Streams = lists:sort(list_streams(State, Username)),
+    {reply, {RefId, {ok, Streams}}, State};
+
 handle_coverage(Req, _KeySpaces, _Sender, State) ->
     lager:warning("unknown coverage received ~p", [Req]),
     {norepl, State}.
@@ -101,6 +104,17 @@ terminate(_Reason, _State) ->
     ok.
 
 %% Private API
+
+list_dir(Path) ->
+    case file:list_dir(Path) of
+        {error, enoent} -> [];
+        {ok, Names} -> Names
+    end.
+
+list_streams(#state{partition=Partition, base_dir=BaseDir}, Username) ->
+    PartitionStr = integer_to_list(Partition),
+    UserPath = filename:join([BaseDir, PartitionStr, Username]),
+    lists:map(fun list_to_binary/1, list_dir(UserPath)).
 
 get_stream(#state{partition=Partition, base_dir=BaseDir}, Username, Stream) ->
     PartitionStr = integer_to_list(Partition),

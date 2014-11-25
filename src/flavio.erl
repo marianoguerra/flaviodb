@@ -2,7 +2,7 @@
 -include("flavio.hrl").
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
--export([ping/0, add/2, stats/0, post_msg/3, get_msgs/4]).
+-export([ping/0, add/2, stats/0, post_msg/3, get_msgs/4, list_streams/1]).
 
 -ignore_xref([ping/0, add/2, stats/0]).
 
@@ -40,6 +40,16 @@ get_msgs(Username, Stream, Id, Count) ->
     {ok, ReqID} = flavio_op_fsm:op(N, W, {get_msgs, {Username, Stream, Id, Count}},
                                    {Username, Stream}),
     wait_for_reqid(ReqID, Timeout).
+
+list_streams(Username) ->
+    Timeout = 5000,
+    case flavio_coverage_fsm:start({list_streams, Username}, Timeout) of
+        {ok, Responses} ->
+            {ok, lists:filter(fun ({_Partition, _Node, {ok, []}}) -> false;
+                             ({_Partition, _Node, _Streams}) -> true
+                         end, Responses)};
+        Other -> Other
+    end.
 
 stats() ->
     Timeout = 5000,
