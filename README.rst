@@ -1216,3 +1216,142 @@ just to do some cleanup we will create the partition folders inside a base
 directory so we don't fill the base rel/flaviodb directory with partition
 folders, later we can make this base directory configurable, the change is
 here: https://github.com/marianoguerra/flaviodb/commit/b33841758f254d8eb7a5e08c245e0274d74eb994
+
+now we need to be able to read the messages for a given Username and Stream,
+for that we will implement a new function in the API that does something like:
+
+.. code:: erlang
+
+    flavio:get_msgs(Username, Stream, Id, Count).
+
+here we tell we want to read Count messages from the stream Stream from user
+Username starting from id Id.
+
+the code will be really similar to the one of the write, we can choose to read
+from only one vnode but to keep it simple and consistent we will read from N,
+this could be used to implement something like consistency checks on read.
+
+since there's a lot of shared code with post_msg I will refactor the commong code
+to a utility function and add some error checking, the resulting code for both
+post_msg and get_msgs on flavio_vnode is:
+
+.. code:: erlang
+
+    handle_command({RefId, {post_msg, {Username, Stream, Msg}}}, _Sender, State) ->
+        {ok, StreamIo} = get_stream(State, Username, Stream),
+        Entry = fixstt:new(Msg),
+        Result = case fixsttio:append(StreamIo, Entry) of
+                     {ok, StreamIo1, EntryId} ->
+                         {ok, _StreamIo2} = fixstt:close(StreamIo1),
+                         {ok, fixstt:set(Entry, id, EntryId)};
+                     Other -> Other
+                 end,
+        {reply, {RefId, {Result, State#state.partition}}, State};
+
+    handle_command({RefId, {get_msgs, {Username, Stream, Id, Count}}}, _Sender, State) ->
+        {ok, StreamIo} = get_stream(State, Username, Stream),
+        Result = case fixsttio:read(StreamIo, Id, Count) of
+                     {ok, StreamIo1, Entries} ->
+                         {ok, _StreamIo2} = fixstt:close(StreamIo1),
+                         {ok, Entries};
+                     Other -> Other
+                 end,
+        {reply, {RefId, {Result, State#state.partition}}, State};
+
+now let's play with it, let's write 3 entries to 2 streams and try reading them back:
+
+.. code:: erlang
+
+    (flavio@127.0.0.1)1> flavio:post_msg(<<"mariano">>, <<"english">>, <<"hello world!">>).
+    {ok,[{{ok,{fixstt,1,9001,9001,12,1416930241029,0,0, <<"hello world!">>}},
+          981946412581700398168100746981252653831329677312},
+         {{ok,{fixstt,1,9001,9001,12,1416930241029,0,0, <<"hello world!">>}},
+          1004782375664995756265033322492444576013453623296},
+         {{ok,{fixstt,1,9001,9001,12,1416930241029,0,0, <<"hello world!">>}},
+          959110449498405040071168171470060731649205731328}]}
+
+    (flavio@127.0.0.1)2> flavio:post_msg(<<"mariano">>, <<"english">>, <<"second post">>).
+    {ok,[{{ok,{fixstt,2,9001,9001,11,1416930252869,0,0, <<"second post">>}},
+          981946412581700398168100746981252653831329677312},
+         {{ok,{fixstt,2,9001,9001,11,1416930252868,0,0, <<"second post">>}},
+          1004782375664995756265033322492444576013453623296},
+         {{ok,{fixstt,2,9001,9001,11,1416930252868,0,0, <<"second post">>}},
+          959110449498405040071168171470060731649205731328}]}
+
+    (flavio@127.0.0.1)3> flavio:post_msg(<<"mariano">>, <<"english">>, <<"eating something">>).
+    {ok,[{{ok,{fixstt,3,9001,9001,16,1416930260533,0,0, <<"eating something">>}},
+          1004782375664995756265033322492444576013453623296},
+         {{ok,{fixstt,3,9001,9001,16,1416930260533,0,0, <<"eating something">>}},
+          981946412581700398168100746981252653831329677312},
+         {{ok,{fixstt,3,9001,9001,16,1416930260533,0,0, <<"eating something">>}},
+          959110449498405040071168171470060731649205731328}]}
+
+    (flavio@127.0.0.1)4> flavio:post_msg(<<"mariano">>, <<"spanish">>, <<"hola mundo!">>).
+    {ok,[{{ok,{fixstt,1,9001,9001,11,1416930275765,0,0, <<"hola mundo!">>}},
+          890602560248518965780370444936484965102833893376},
+         {{ok,{fixstt,1,9001,9001,11,1416930275765,0,0, <<"hola mundo!">>}},
+          867766597165223607683437869425293042920709947392},
+         {{ok,{fixstt,1,9001,9001,11,1416930275765,0,0, <<"hola mundo!">>}},
+          844930634081928249586505293914101120738586001408}]}
+
+    (flavio@127.0.0.1)5> flavio:post_msg(<<"mariano">>, <<"spanish">>, <<"segundo post">>).
+    {ok,[{{ok,{fixstt,2,9001,9001,12,1416930280219,0,0, <<"segundo post">>}},
+          867766597165223607683437869425293042920709947392},
+         {{ok,{fixstt,2,9001,9001,12,1416930280218,0,0, <<"segundo post">>}},
+          844930634081928249586505293914101120738586001408},
+         {{ok,{fixstt,2,9001,9001,12,1416930280218,0,0, <<"segundo post">>}},
+          890602560248518965780370444936484965102833893376}]}
+
+    (flavio@127.0.0.1)6> flavio:post_msg(<<"mariano">>, <<"spanish">>, <<"comiendo algo">>).
+    {ok,[{{ok,{fixstt,3,9001,9001,13,1416930284791,0,0, <<"comiendo algo">>}},
+          844930634081928249586505293914101120738586001408},
+         {{ok,{fixstt,3,9001,9001,13,1416930284791,0,0, <<"comiendo algo">>}},
+          890602560248518965780370444936484965102833893376},
+         {{ok,{fixstt,3,9001,9001,13,1416930284791,0,0, <<"comiendo algo">>}},
+          867766597165223607683437869425293042920709947392}]}
+
+nothing new under the sun there, now let's try reading some of those, just as a
+little help, the returned value is a record called fixstt, the second item on
+it is the entry id, you can see it starts from 1 and goes to 3, we will use it
+to query them:
+
+.. code:: erlang
+
+    (flavio@127.0.0.1)8> % query from mariano/spanish from id 1, get 1 post
+    (flavio@127.0.0.1)8> flavio:get_msgs(<<"mariano">>, <<"spanish">>, 1, 1).
+    {ok,[{{ok,[{fixstt,1,9001.0,9001.0,11,1416930275765,0,0, <<"hola mundo!">>}]},
+          867766597165223607683437869425293042920709947392},
+         {{ok,[{fixstt,1,9001.0,9001.0,11,1416930275765,0,0, <<"hola mundo!">>}]},
+          890602560248518965780370444936484965102833893376},
+         {{ok,[{fixstt,1,9001.0,9001.0,11,1416930275765,0,0, <<"hola mundo!">>}]},
+          844930634081928249586505293914101120738586001408}]}
+
+    (flavio@127.0.0.1)9> % same but get 3 posts
+    (flavio@127.0.0.1)9> flavio:get_msgs(<<"mariano">>, <<"spanish">>, 1, 3).
+    {ok,[{{ok,[{fixstt,1,9001.0,9001.0,11,1416930275765,0,0, <<"hola mundo!">>},
+               {fixstt,2,9001.0,9001.0,12,1416930280218,0,0, <<"segundo post">>},
+               {fixstt,3,9001.0,9001.0,13,1416930284791,0,0, <<"comiendo algo">>}]},
+          890602560248518965780370444936484965102833893376},
+         {{ok,[{fixstt,1,9001.0,9001.0,11,1416930275765,0,0, <<"hola mundo!">>},
+               {fixstt,2,9001.0,9001.0,12,1416930280218,0,0, <<"segundo post">>},
+               {fixstt,3,9001.0,9001.0,13,1416930284791,0,0, <<"comiendo algo">>}]},
+          844930634081928249586505293914101120738586001408},
+         {{ok,[{fixstt,1,9001.0,9001.0,11,1416930275765,0,0, <<"hola mundo!">>},
+               {fixstt,2,9001.0,9001.0,12,1416930280219,0,0, <<"segundo post">>},
+               {fixstt,3,9001.0,9001.0,13,1416930284791,0,0, <<"comiendo algo">>}]},
+          867766597165223607683437869425293042920709947392}]}
+
+    (flavio@127.0.0.1)10> % query but starting from some weird id
+    (flavio@127.0.0.1)10> flavio:get_msgs(<<"mariano">>, <<"spanish">>, 10, 3).
+    {ok,[{{error,outofbound}, 844930634081928249586505293914101120738586001408},
+         {{error,outofbound}, 890602560248518965780370444936484965102833893376},
+         {{error,outofbound}, 867766597165223607683437869425293042920709947392}]}
+
+we can see we get what we ask for and we handle errors correctly when we ask
+for some nonsense.
+
+that's all for now, there's lot to improve on this, for example we could avoid
+opening and closing the file for each request, but that doesn't add anything
+useful to this guide, it may be implemented later as an optimization.
+
+full changes here: https://github.com/marianoguerra/flaviodb/commit/b0b74fbac07b542479ef8453434715c317251d4f
