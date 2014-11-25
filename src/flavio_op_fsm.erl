@@ -3,7 +3,7 @@
 -include("flavio.hrl").
 
 %% API
--export([start_link/5, op/3]).
+-export([start_link/6, op/3, op/4]).
 
 %% Callbacks
 -export([init/1, code_change/4, handle_event/3, handle_info/3,
@@ -26,6 +26,8 @@
                 n :: pos_integer(),
                 w :: pos_integer(),
                 op,
+                % key used to calculate the hash
+                key,
                 accum,
                 preflist :: riak_core_apl:preflist2(),
                 num_w = 0 :: non_neg_integer()}).
@@ -34,12 +36,15 @@
 %%% API
 %%%===================================================================
 
-start_link(ReqID, From, Op, N, W) ->
-    gen_fsm:start_link(?MODULE, [ReqID, From, Op, N, W], []).
+start_link(ReqID, From, Op, Key, N, W) ->
+    gen_fsm:start_link(?MODULE, [ReqID, From, Op, Key, N, W], []).
 
 op(N, W, Op) ->
+    op(N, W, Op, Op).
+
+op(N, W, Op, Key) ->
     ReqID = reqid(),
-    flavio_op_fsm_sup:start_write_fsm([ReqID, self(), Op, N, W]),
+    flavio_op_fsm_sup:start_write_fsm([ReqID, self(), Op, Key, N, W]),
     {ok, ReqID}.
 
 %%%===================================================================
@@ -47,13 +52,13 @@ op(N, W, Op) ->
 %%%===================================================================
 
 %% @doc Initialize the state data.
-init([ReqID, From, Op, N, W]) ->
-    SD = #state{req_id=ReqID, from=From, n=N, w=W, op=Op, accum=[]},
+init([ReqID, From, Op, Key, N, W]) ->
+    SD = #state{req_id=ReqID, from=From, n=N, w=W, op=Op, key=Key, accum=[]},
     {ok, prepare, SD, 0}.
 
 %% @doc Prepare the write by calculating the _preference list_.
-prepare(timeout, SD0=#state{op=Op, n=N}) ->
-    DocIdx = riak_core_util:chash_key(Op),
+prepare(timeout, SD0=#state{n=N, key=Key}) ->
+    DocIdx = riak_core_util:chash_key(Key),
     Preflist = riak_core_apl:get_apl(DocIdx, N, flavio),
     SD = SD0#state{preflist=Preflist},
     {next_state, execute, SD, 0}.
