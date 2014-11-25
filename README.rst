@@ -1413,3 +1413,83 @@ just to make the output less noisy, let's remove the responses that are empty li
         end.
 
 full change here: https://github.com/marianoguerra/flaviodb/commit/5a2ca66103313541af605021428345fdf28d7336
+
+Listing users
+.............
+
+this one will be really easy based on the last change, let's go straight to the code:
+
+.. code:: erlang
+
+    list_users() ->
+        Timeout = 5000,
+        case flavio_coverage_fsm:start(list_users, Timeout) of
+            {ok, Responses} ->
+                {ok, lists:filter(fun filter_empty_responses/1, Responses)};
+            Other -> Other
+        end.
+
+I refactored the filtering to reuse it on both calls.
+
+the implementation on the vnode again is simple:
+
+.. code:: erlang
+
+    handle_coverage(list_users, _KeySpaces, {_, RefId, _}, State) ->
+        Users = lists:sort(list_users(State)),
+        {reply, {RefId, {ok, Users}}, State};
+
+playing with both functions on the console:
+
+.. code:: erlang
+
+    (flavio@127.0.0.1)1> flavio:post_msg(<<"mariano">>, <<"spanish">>, <<"comiendo algo">>).
+    ...
+    (flavio@127.0.0.1)2> flavio:post_msg(<<"mariano">>, <<"english">>, <<"eating something">>).
+    ...
+    (flavio@127.0.0.1)3> flavio:post_msg(<<"bob">>, <<"english">>, <<"eating something too">>).
+    ...
+
+    (flavio@127.0.0.1)4> flavio:list_users().
+    {ok,[{981946412581700398168100746981252653831329677312,
+          'flavio@127.0.0.1', {ok,[<<"mariano">>]}},
+         {890602560248518965780370444936484965102833893376,
+          'flavio@127.0.0.1', {ok,[<<"mariano">>]}},
+         {959110449498405040071168171470060731649205731328,
+          'flavio@127.0.0.1', {ok,[<<"mariano">>]}},
+         {867766597165223607683437869425293042920709947392,
+          'flavio@127.0.0.1', {ok,[<<"mariano">>]}},
+         {844930634081928249586505293914101120738586001408,
+          'flavio@127.0.0.1', {ok,[<<"mariano">>]}},
+         {365375409332725729550921208179070754913983135744,
+          'flavio@127.0.0.1', {ok,[<<"bob">>]}},
+         {342539446249430371453988632667878832731859189760,
+          'flavio@127.0.0.1', {ok,[<<"bob">>]}},
+         {319703483166135013357056057156686910549735243776,
+          'flavio@127.0.0.1', {ok,[<<"bob">>]}},
+         {1004782375664995756265033322492444576013453623296,
+          'flavio@127.0.0.1', {ok,[<<"mariano">>]}}]}
+
+    (flavio@127.0.0.1)6> flavio:list_streams(<<"mariano">>).
+    {ok,[{981946412581700398168100746981252653831329677312,
+          'flavio@127.0.0.1', {ok,[<<"english">>]}},
+         {867766597165223607683437869425293042920709947392,
+          'flavio@127.0.0.1', {ok,[<<"spanish">>]}},
+         {959110449498405040071168171470060731649205731328,
+          'flavio@127.0.0.1', {ok,[<<"english">>]}},
+         {844930634081928249586505293914101120738586001408,
+          'flavio@127.0.0.1', {ok,[<<"spanish">>]}},
+         {890602560248518965780370444936484965102833893376,
+          'flavio@127.0.0.1', {ok,[<<"spanish">>]}},
+         {1004782375664995756265033322492444576013453623296,
+          'flavio@127.0.0.1', {ok,[<<"english">>]}}]}
+
+    (flavio@127.0.0.1)7> flavio:list_streams(<<"bob">>).
+    {ok,[{319703483166135013357056057156686910549735243776,
+          'flavio@127.0.0.1', {ok,[<<"english">>]}},
+         {342539446249430371453988632667878832731859189760,
+          'flavio@127.0.0.1', {ok,[<<"english">>]}},
+         {365375409332725729550921208179070754913983135744,
+          'flavio@127.0.0.1', {ok,[<<"english">>]}}]}
+
+full change here: https://github.com/marianoguerra/flaviodb/commit/21d4fa819aa0429cab7d19dffb6240f9aeb66391
