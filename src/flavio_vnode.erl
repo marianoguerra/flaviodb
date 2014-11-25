@@ -39,16 +39,26 @@ handle_command({RefId, {add, {A, B}}}, _Sender, State=#state{ops_count=CurrentCo
     NewState = State#state{ops_count=NewCount},
     {reply, {RefId, {A + B, State#state.partition}}, NewState};
 
-handle_command({RefId, {post_msg, {Username, Stream, Msg}}}, _Sender,
-               State=#state{partition=Partition, base_dir=BaseDir}) ->
-    PartitionStr = integer_to_list(Partition),
-    StreamPath = filename:join([BaseDir, PartitionStr, Username, Stream, "msgs"]),
-    ok = filelib:ensure_dir(StreamPath),
-    {ok, StreamIo} = fixsttio:open(StreamPath),
+handle_command({RefId, {post_msg, {Username, Stream, Msg}}}, _Sender, State) ->
+    {ok, StreamIo} = get_stream(State, Username, Stream),
     Entry = fixstt:new(Msg),
-    {ok, _NewStream, EntryId} = fixsttio:append(StreamIo, Entry),
-    EntryWithId = fixstt:set(Entry, id, EntryId),
-    {reply, {RefId, {EntryWithId, State#state.partition}}, State};
+    Result = case fixsttio:append(StreamIo, Entry) of
+                 {ok, StreamIo1, EntryId} ->
+                     {ok, _StreamIo2} = fixsttio:close(StreamIo1),
+                     {ok, fixstt:set(Entry, id, EntryId)};
+                 Other -> Other
+             end,
+    {reply, {RefId, {Result, State#state.partition}}, State};
+
+handle_command({RefId, {get_msgs, {Username, Stream, Id, Count}}}, _Sender, State) ->
+    {ok, StreamIo} = get_stream(State, Username, Stream),
+    Result = case fixsttio:read(StreamIo, Id, Count) of
+                 {ok, StreamIo1, Entries} ->
+                     {ok, _StreamIo2} = fixsttio:close(StreamIo1),
+                     {ok, Entries};
+                 Other -> Other
+             end,
+    {reply, {RefId, {Result, State#state.partition}}, State};
 
 handle_command(Message, _Sender, State) ->
     ?PRINT({unhandled_command, Message}),
@@ -89,3 +99,11 @@ handle_exit(_Pid, _Reason, State) ->
 
 terminate(_Reason, _State) ->
     ok.
+
+%% Private API
+
+get_stream(#state{partition=Partition, base_dir=BaseDir}, Username, Stream) ->
+    PartitionStr = integer_to_list(Partition),
+    StreamPath = filename:join([BaseDir, PartitionStr, Username, Stream, "msgs"]),
+    ok = filelib:ensure_dir(StreamPath),
+    fixsttio:open(StreamPath).
