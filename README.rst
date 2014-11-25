@@ -1044,3 +1044,170 @@ results to be sure that all vnodes got the same result, this is part of
 conflict resolution and it should be part of the design decisions of your app.
 
 the full change is here: https://github.com/marianoguerra/flaviodb/commit/dde9698c821055512b59fc54c25dbc5b223e8afe
+
+what about handoff?
+-------------------
+
+it seems you know a lot about riak_core do you?
+
+well, the thing about `handoff <https://github.com/basho/riak_core/wiki/Handoffs>`_
+is that it's used to move data between vnodes during ring resizing and until
+this moment we don't have data to move around.
+
+but this is about to change, let's implement a data store, but what will we
+store? short messages.
+
+one problem I have with social networks is that I have several interests and I
+post in more than one language, and I hate having some people have to go
+through my rants about things that they aren't interested in just because they
+want to know about other aspects of my life.
+
+this is about to change, let's disrupt some industries while we learn
+riak_core.
+
+how will it work? simple, each user has a set of streams he can post short
+messages to, a stream is created when the user posts for the first time there.
+
+let's think about the problem in a riak_core way, you have seen that the key
+hashing until now is done with a two item tuple, here we have users that have
+streams, that fits perfectly with our problem, what a coincidence!
+
+so when a new message is posted we will hash {Username, Stream} and send the
+message to W vnodes and wait confirmation from N of them that they stored the
+message.
+
+so we are going to add a new function to flavio's API like this:
+
+.. code:: erlang
+
+    flavio:post_msg(Username, Stream, Msg)
+
+only if there was a library to write short messages to disk, let see...
+
+another coinsidence! here's one: https://github.com/marianoguerra/fixstt
+
+so we start adding an entry to rebar.config to add this new dependency:
+
+.. code:: erlang
+
+    {fixstt, ".*", {git, "git://github.com/marianoguerra/fixstt", {branch, "master"}}}
+
+and we will ask rebar to fetch the new deps::
+
+    ./rebar get-deps
+
+then we need to actually implement post_msg, it will be really similar to
+add since we want to write to W vnodes and wait for N confirmations:
+
+.. code:: erlang
+
+    post_msg(Username, Stream, Msg) ->
+        N = 3,
+        W = 3,
+        Timeout = 5000,
+
+        {ok, ReqID} = flavio_op_fsm:op(N, W, {post_msg, {Username, Stream, Msg}},
+                                       {Username, Stream}),
+        wait_for_reqid(ReqID, Timeout).
+
+you may have noticed that we passed an extra parameter to flavio_op_fsm:op,
+that's because I added an extra parameter to be used as explicit key for the
+hashing function in case the operation has more than 2 items.
+
+to start let's implement a really naive way of writting the messages:
+
+.. code:: erlang
+
+    handle_command({RefId, {post_msg, {Username, Stream, Msg}}}, _Sender,
+                   State=#state{partition=Partition}) ->
+        PartitionStr = integer_to_list(Partition),
+        StreamPath = filename:join([PartitionStr, Username, Stream, "msgs"]),
+        ok = filelib:ensure_dir(StreamPath),
+        {ok, StreamIo} = fixsttio:open(StreamPath),
+        Entry = fixstt:new(Msg),
+        {ok, _NewStream, EntryId} = fixsttio:append(StreamIo, Entry),
+        EntryWithId = fixstt:set(Entry, id, EntryId),
+        {reply, {RefId, {EntryWithId, State#state.partition}}, State};
+
+let's disect the interesting lines:
+
+.. code:: erlang
+
+        StreamPath = filename:join([PartitionStr, Username, Stream, "msgs"]),
+
+here we create the path were we are going to store the messages, it's built
+by joining the partition id, username, stream and the string msgs.
+
+why the partition id? because one server instance will have more than one vnode
+on it and it may get a request to write a message for the same Username and
+Stream, in that case if we didn't use the Partition to differentiate them then
+more than one vnode will try to open and/or write to the same file causing
+interesting results, also, later when we move one vnode to another server we
+want to just move the data from that vnode.
+
+.. code:: erlang
+
+        ok = filelib:ensure_dir(StreamPath),
+
+here we make sure the directory for the msgs file exists.
+
+.. code:: erlang
+
+        {ok, StreamIo} = fixsttio:open(StreamPath),
+
+then we open our stream with the path we built before.
+
+.. code:: erlang
+
+        Entry = fixstt:new(Msg),
+        {ok, _NewStream, EntryId} = fixsttio:append(StreamIo, Entry),
+        EntryWithId = fixstt:set(Entry, id, EntryId),
+
+then we create a new entry, append it to the stram and set the returned id to it.
+
+.. code:: erlang
+
+        {reply, {RefId, {EntryWithId, State#state.partition}}, State};
+
+finally we return the received RefId as firt item and as second a pair with
+the entry we wrote and the partition that handled the request.
+
+now let's try everything together:
+
+.. code:: erlang
+
+    (flavio@127.0.0.1)1> flavio:post_msg(<<"mariano">>, <<"english">>, <<"hello world!">>).
+
+    {ok,[{{fixstt,1,9001,9001,12,1416928004032,0,0, <<"hello world!">>},
+          981946412581700398168100746981252653831329677312},
+         {{fixstt,1,9001,9001,12,1416928004032,0,0, <<"hello world!">>},
+          959110449498405040071168171470060731649205731328},
+         {{fixstt,1,9001,9001,12,1416928004032,0,0, <<"hello world!">>},
+          1004782375664995756265033322492444576013453623296}]}
+
+    (flavio@127.0.0.1)2> flavio:post_msg(<<"mariano">>, <<"spanish">>, <<"hola mundo!">>).
+    {ok,[{{fixstt,1,9001,9001,11,1416928004035,0,0, <<"hola mundo!">>},
+          890602560248518965780370444936484965102833893376},
+         {{fixstt,1,9001,9001,11,1416928004035,0,0,<<"hola mundo!">>},
+          867766597165223607683437869425293042920709947392},
+         {{fixstt,1,9001,9001,11,1416928004035,0,0,<<"hola mundo!">>},
+          844930634081928249586505293914101120738586001408}]}
+
+it worked we can see the 3 responses have the record stored on it, we can make
+sure it worked by going to the server folder and searching for a file names msgs::
+
+    cd rel/flavio
+    $ find -name msgs
+
+in my case this is the ouput, in your case it may vary::
+
+    ./890602560248518965780370444936484965102833893376/mariano/spanish/msgs
+    ./844930634081928249586505293914101120738586001408/mariano/spanish/msgs
+    ./1004782375664995756265033322492444576013453623296/mariano/english/msgs
+    ./959110449498405040071168171470060731649205731328/mariano/english/msgs
+    ./867766597165223607683437869425293042920709947392/mariano/spanish/msgs
+    ./981946412581700398168100746981252653831329677312/mariano/english/msgs
+
+we can see that there are 3 instances of spanish and 3 of english.
+
+the full change is here: https://github.com/marianoguerra/flaviodb/commit/62ad84faa81d94c4057522d9da3b3c82df911dbb
