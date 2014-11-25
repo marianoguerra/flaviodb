@@ -1163,13 +1163,13 @@ then we open our stream with the path we built before.
         {ok, _NewStream, EntryId} = fixsttio:append(StreamIo, Entry),
         EntryWithId = fixstt:set(Entry, id, EntryId),
 
-then we create a new entry, append it to the stram and set the returned id to it.
+then we create a new entry, append it to the stream and set the returned id to it.
 
 .. code:: erlang
 
         {reply, {RefId, {EntryWithId, State#state.partition}}, State};
 
-finally we return the received RefId as firt item and as second a pair with
+finally we return the received RefId as first item and as second a pair with
 the entry we wrote and the partition that handled the request.
 
 now let's try everything together:
@@ -1211,3 +1211,8 @@ in my case this is the ouput, in your case it may vary::
 we can see that there are 3 instances of spanish and 3 of english.
 
 the full change is here: https://github.com/marianoguerra/flaviodb/commit/62ad84faa81d94c4057522d9da3b3c82df911dbb
+
+just to do some cleanup we will create the partition folders inside a base
+directory so we don't fill the base rel/flaviodb directory with partition
+folders, later we can make this base directory configurable, the change is
+here: https://github.com/marianoguerra/flaviodb/commit/b33841758f254d8eb7a5e08c245e0274d74eb994
