@@ -1493,3 +1493,305 @@ playing with both functions on the console:
           'flavio@127.0.0.1', {ok,[<<"english">>]}}]}
 
 full change here: https://github.com/marianoguerra/flaviodb/commit/21d4fa819aa0429cab7d19dffb6240f9aeb66391
+
+Implementing Handoff
+--------------------
+
+Finally we have all the pieces to implement
+`handoff <https://github.com/basho/riak_core/wiki/Handoffs>`_, this is a
+complex topic that is described in detail in other places, but still it's hard
+to understand, so I will do my best.
+
+the reasons to start a handoff are:
+
+
+* A ring update event for a ring that all other nodes have already seen.
+* A secondary vnode is idle for a period of time and the primary, original owner of the partition is up again.
+
+when this happen riak_core will inform the vnode that handoff is starting, calling
+handoff_starting, if it returns false it's cancelled, if it returns true it calls
+is_empty, that must return false to inform that the vnode has something to handoff (it's not empty)
+or true to inform that the vnode is empty, if it returns true the handoff is considered finished, if
+false then a call is done to handle_handoff_command passing as first parameter
+an opaque structure that contains two fields we are insterested in, foldfun and
+acc0, they can be unpacked with a macro like this:
+
+.. code:: erlang
+
+    handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender, State) ->
+
+this function must iterate through all the keys it stores and for each of them
+call foldfun with the key as first argument, the value as second argument and
+the latest acc0 value as third, like this:
+
+.. code:: erlang
+
+    AccIn1 = Fun(Key, Value, AccIn0),
+
+the result of the function call is the new acc0 you must pass to the next call
+to foldfun, the last acc0 must be returned by the handle_handoff_command
+function like this:
+
+.. code:: erlang
+
+    {reply, AccFinal, State};
+
+for each call to Fun(Key, Entry, AccIn0) riak_core will send it to the new vnode, to do that
+it must encode the data before sending, it does this by calling encode_handoff_item(Key, Value),
+where you must encode the data before sending it, it's common to do something like:
+
+.. code:: erlang
+
+    term_to_binary({Key, Value}).
+
+when the value is received by the new vnode it must decode it and do something
+with it, this is done by the  function handle_handoff_data, where we decode
+the received data and do the appropriate thing with it:
+
+.. code:: erlang
+
+    handle_handoff_data(BinData, State) ->
+        TermData = binary_to_term(BinData),
+        {Key, Value} = TermData,
+        % do something with it here
+
+when we sent all the key/values handoff_finished will be called and then delete
+so we cleanup the data on the old vnode:
+
+.. code:: erlang
+
+    handoff_finished(_TargetNode, State=#state{partition=Partition}) ->
+        lager:info("handoff finished ~p", [Partition]),
+        {ok, State}.
+
+    delete(State) ->
+        Path = partition_path(State),
+        remove_path(Path),
+        {ok, State}.
+
+you can decide to handle other commands sent to the vnode while the handoff is
+running, you can choose to do one of the followings:
+
+* handle it in the current vnode
+* forward it to the vnode we are handing off
+* drop it
+
+what to do depends on the design of you app, all of them have tradeoffs.
+
+the signature of all the responses is:
+
+.. code:: erlang
+
+    -callback handle_handoff_command(Request::term(), Sender::sender(), ModState::term()) ->
+    {reply, Reply::term(), NewModState::term()} |
+    {noreply, NewModState::term()} |
+    {async, Work::function(), From::sender(), NewModState::term()} |
+    {forward, NewModState::term()} |
+    {drop, NewModState::term()} |
+    {stop, Reason::term(), NewModState::term()}.
+
+an advanced diagram of the flow is as follows::
+                                                                    
+     +-----------+      +----------+        +----------+                
+     |           | true |          | false  |          |                
+     | Starting  +------> is_empty +--------> fold_req |                
+     |           |      |          |        |          |                
+     +-----+-----+      +----+-----+        +----+-----+                
+           |                 |                   |                      
+           | false           | true              | ok                   
+           |                 |                   |                      
+     +-----v-----+           |              +----v-----+     +--------+ 
+     |           |           |              |          |     |        | 
+     | Cancelled |           +--------------> finished +-----> delete | 
+     |           |                          |          |     |        | 
+     +-----------+                          +----------+     +--------+ 
+                                                                    
+the pseudocode for the handoff implementation would be something like:
+
+.. code:: python
+
+    handle_handoff_command(Fun, Acc, _Sender, State):
+        for Stream in AllUserStreams:
+            for Key, Entry in get_entries(Stream):
+                # pardon the mutability, it's just to make the code smaller
+                Acc = Fun(Key, Entry, Acc)
+
+        return reply, Acc, State
+
+the complete code for the handoff can be seen in the commit for this feature.
+
+to test this we will need to build a cluster by parts, for this we will build a
+devrel again, start a node, put some data in it and then join some other nodes,
+and watch the handoff running.
+
+I've added a lot of logging to the functions involved in the handoff so we can
+follow them from the console.
+
+Let's start by building the devrel and start one node:
+
+.. code:: shell
+
+    rm -rf dev && make devrel
+    ./dev/dev1/bin/flavio console
+
+we will generate some data for it, just paste it on the node's console:
+
+.. code:: erlang
+
+    Nums = lists:seq(1, 10).
+    Users = [<<"bob">>, <<"sandy">>, <<"patrick">>, <<"gary">>].
+    Topics = [<<"english">>, <<"spanish">>, <<"erlang">>, <<"riak_core">>].
+    MakeUsersAndTopics = fun (User) -> lists:map(fun (Topic) -> {User, Topic} end, Topics) end.
+    UsersAndTopics = lists:flatmap(MakeUsersAndTopics, Users).
+    MakeMsg = fun (User, Topic, I) -> list_to_binary(io_lib:format("~s says ~p in ~s", [User, I, Topic])) end.
+    MakeMsgs = fun ({User, Topic}) -> lists:map(fun (I) -> {User, Topic, MakeMsg(User, Topic, I)} end, Nums) end.
+    Msgs = lists:flatmap(MakeMsgs, UsersAndTopics).
+
+    lists:foreach(fun ({Username, Topic, Msg}) -> flavio:post_msg(Username, Topic, Msg) end, Msgs).
+
+we can check that it worked by listing users and buckets:
+
+.. code:: erlang
+
+    flavio:list_users().
+    flavio:list_streams(<<"bob">>).
+
+now that we have data let's start a second node in another terminal:
+
+.. code:: shell
+
+    ./dev/dev2/bin/flavio console
+
+in yet another terminal we ask the second node to join the first one:
+
+.. code:: shell
+
+    ./dev/dev2/bin/flavio-admin cluster join flavio1@127.0.0.1
+
+and we commit the plan
+
+.. code:: shell
+
+    dev/dev1/bin/flavio-admin cluster plan
+    dev/dev1/bin/flavio-admin cluster commit
+    
+you can see the progress by looking at the consoles or by printing the cluster status, which at some point will reach 50% for each ring::
+
+    $ dev/dev1/bin/flavio-admin member-status
+
+    ================================= Membership ==================================
+    Status     Ring    Pending    Node
+    -------------------------------------------------------------------------------
+    valid      50.0%      --      'flavio1@127.0.0.1'
+    valid      50.0%      --      'flavio2@127.0.0.1'
+    -------------------------------------------------------------------------------
+    Valid:2 / Leaving:0 / Exiting:0 / Joining:0 / Down:0
+
+we should see logs appearing on both consoles informing about the handoff
+progress, here are some excerpts from mine, yours will differ obviously:
+
+.. code:: shell
+
+    (flavio1@127.0.0.1)12> 10:53:57.316 [info] 'flavio2@127.0.0.1' joined cluster with status 'joining'
+
+    10:54:26.600 [info] handoff starting 45671926166590716193865151022383844364247891968
+    10:54:26.602 [info] handoff is empty? false 22835963083295358096932575511191922182123945984
+    10:54:26.603 [info] handoff cancelled 114179815416476790484662877555959610910619729920
+    10:54:26.619 [info] Starting ownership_transfer transfer of flavio_vnode from 'flavio1@127.0.0.1' 22835963083295358096932575511191922182123945984 to 'flavio2@127.0.0.1' 22835963083295358096932575511191922182123945984
+    10:54:26.620 [info] fold req 45671926166590716193865151022383844364247891968
+    10:54:26.620 [info] handling handoff for patrick/spanish
+    10:54:26.667 [info] ownership_transfer transfer of flavio_vnode from 'flavio1@127.0.0.1' 45671926166590716193865151022383844364247891968 to 'flavio2@127.0.0.1' 45671926166590716193865151022383844364247891968 completed: sent 1.08 KB bytes in 10 of 10 objects in 0.05 seconds (23.45 KB/second)
+    10:54:26.668 [info] handoff finished 22835963083295358096932575511191922182123945984
+    10:54:26.681 [info] handoff delete flavio_data/45671926166590716193865151022383844364247891968
+    10:54:26.683 [info] terminate 45671926166590716193865151022383844364247891968: normal
+
+multiplicate that for approx 32 and you will get an idea of the amount of logs generated :)
+
+on the receiving side we get logs like this:
+
+.. code:: shell
+
+    (flavio2@127.0.0.1)1> 10:54:21.864 [info] 'flavio2@127.0.0.1' changed from 'joining' to 'valid'
+    10:54:26.620 [info] Receiving handoff data for partition flavio_vnode:45671926166590716193865151022383844364247891968 from {"127.0.0.1",34478}
+    10:54:26.669 [info] Handoff receiver for partition 22835963083295358096932575511191922182123945984 exited after processing 10 objects from {"127.0.0.1",32835}
+    10:54:36.614 [info] Receiving handoff data for partition flavio_vnode:137015778499772148581595453067151533092743675904 from {"127.0.0.1",53206}
+    10:55:23.619 [info] handoff starting 68507889249886074290797726533575766546371837952
+    10:55:23.639 [info] handoff is empty? true 1370157784997721485815954530671515330927436759040
+    10:55:23.639 [info] handoff delete flavio_data/1370157784997721485815954530671515330927436759040
+    10:55:23.640 [info] terminate 890602560248518965780370444936484965102833893376: normal
+
+
+in this case this vnode also starts a handoff to the node 1 but since it has no
+data it will finish all the vnode handoffs right away.
+
+to be sure that the handoff happened you can list the folders in each node, this
+is what I got:
+
+.. code:: shell
+
+    tree dev/dev1/flavio_data
+    dev/dev1/flavio_data
+    ├── 0
+    │   └── patrick
+    │       └── spanish
+    │           └── msgs
+    ├── 1073290264914881830555831049026020342559825461248
+    │   └── gary
+    │       └── english
+    │           └── msgs
+    ├── 1164634117248063262943561351070788031288321245184
+    │   ├── bob
+    │   │   └── riak_core
+    │   │       └── msgs
+    │   └── gary
+    │       └── spanish
+    │           └── msgs
+
+    ...
+
+    ├── 707914855582156101004909840846949587645842325504
+    │   └── sandy
+    │       └── erlang
+    │           └── msgs
+    └── 91343852333181432387730302044767688728495783936
+        └── sandy
+            └── english
+                └── msgs
+
+    63 directories, 22 files
+
+    ➜  flaviodb git:(master) ✗ tree dev/dev2/flavio_data
+    dev/dev2/flavio_data
+    ├── 1118962191081472546749696200048404186924073353216
+    │   ├── bob
+    │   │   └── riak_core
+    │   │       └── msgs
+    │   └── gary
+    │       └── english
+    │           └── msgs
+
+    ...
+
+    ├── 662242929415565384811044689824565743281594433536
+    │   ├── patrick
+    │   │   └── english
+    │   │       └── msgs
+    │   └── sandy
+    │       └── erlang
+    │           └── msgs
+    └── 685078892498860742907977265335757665463718379520
+        ├── patrick
+        │   └── english
+        │       └── msgs
+        └── sandy
+            └── erlang
+                └── msgs
+
+    67 directories, 26 files
+
+as you can see the handoff actually happened :)
+
+you can keep playing by adding more messages, and adding more nodes to the
+cluster and see the handoff happen.
+
+all the changes for handoff are here: https://github.com/marianoguerra/flaviodb/commit/4c259862b9b8407e83a88c4566c337d88e59c430
