@@ -1,5 +1,5 @@
 REBAR = $(shell pwd)/rebar
-.PHONY: deps
+.PHONY: deps slides
 
 all: deps compile
 
@@ -28,6 +28,8 @@ stage : rel
 	$(foreach dep,$(wildcard deps/*), rm -rf rel/flavio/lib/$(shell basename $(dep))-* && ln -sf $(abspath $(dep)) rel/flavio/lib;)
 	$(foreach app,$(wildcard apps/*), rm -rf rel/flavio/lib/$(shell basename $(app))-* && ln -sf $(abspath $(app)) rel/flavio/lib;)
 
+slides:
+	rst2html5 --pretty-print-code --jquery --reveal-js --stylesheet-path=presentation.css presentation.rst > presentation.html
 
 ##
 ## Developer targets

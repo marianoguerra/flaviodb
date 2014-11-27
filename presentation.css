@@ -1,0 +1,15 @@
+.reveal h2{
+ font-size: 1.3em !important;
+ text-transform: none !important;
+}
+
+.reveal pre{
+ box-shadow: none !important;
+ background-color: #fff;
+ width: 100% !important;
+}
+
+span.pln, span.com, .generic.output{
+ color: #555;
+}
+
