@@ -7,7 +7,8 @@
   {applications, [
                   kernel,
                   stdlib,
-                  riak_core
+                  riak_core,
+                  cowboy
                  ]},
   {mod, { flavio_app, []}},
   {env, []}
