@@ -1799,6 +1799,9 @@ all the changes for handoff are here: https://github.com/marianoguerra/flaviodb/
 Providing an API
 ----------------
 
+Setup
+.....
+
 first we need to add our new dependencies to rebar.config, we need a web server
 and a way to parse json, we will use cowboy and jsx for that:
 
@@ -1819,6 +1822,9 @@ to run this command from the root of the project:
     printf '0a\n%%%% coding: latin-1\n.\nw\n' | ed deps/bullet/src/bullet_handler.erl
 
 it will add a header to that file specifying the encoding to let it compile.
+
+Creating Messages
+.................
 
 then we need to start the web server and register some handlers, we will start
 by implementing a way to post a new message, this will expose the flavio:post_msg
@@ -2003,3 +2009,83 @@ the happy path works fine, let's try the unhappy ones:
 cowboy takes care of handling the other cases for us :)
 
 the full change is here: https://github.com/marianoguerra/flaviodb/commit/416528e6f8a1cd1cfd2f789dd87d1afc761485c6
+
+Querying Messages
+.................
+
+This will be similar to what we did in the previous section, we will start by adding
+two new fields to our state, from and limit, which will be query parameters
+we will extract on init and will be used if the request is a GET request, this
+two parameters will be used to specify from where and how many entries the user
+wants to query
+
+.. code:: erlang
+
+    -record(state, {username, topic, from, limit}).
+
+    rest_init(Req, []) ->
+        {Username, Req1} = cowboy_req:binding(username, Req),
+        {Topic, Req2} = cowboy_req:binding(topic, Req1),
+
+        {FromStr, Req3} = cowboy_req:qs_val(<<"from">>, Req2, <<"">>),
+        {LimitStr, Req4} = cowboy_req:qs_val(<<"limit">>, Req3, <<"1">>),
+
+        From = to_int_or(FromStr, nil),
+        Limit = to_int_or(LimitStr, 1),
+
+        {ok, Req4, #state{username=Username, topic=Topic, from=From, limit=Limit}}.
+
+from can be left out and it means "query limit items from the end".
+
+.. code:: erlang
+
+    allowed_methods(Req, State) -> {[<<"POST">>, <<"GET">>], Req, State}.
+
+    content_types_provided(Req, State) ->
+        {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.
+
+we say we also support GET now and that when a request is done that accepts
+application/json we will handle it in the to_json function.
+
+.. code:: erlang
+
+    to_json(Req, State=#state{username=Username, topic=Topic, from=From, limit=Limit}) ->
+        {ok, [FirstResponse|_]} = flavio:get_msgs(Username, Topic, From, Limit),
+        {{ok, Entities}, _Partition} = FirstResponse,
+        EntitiesPList = lists:map(fun fixstt:to_proplist/1, Entities),
+        EntitiesJson = jsx:encode(EntitiesPList),
+
+        {EntitiesJson, Req, State}.
+
+finally the to_json function where we simply fall the flavio function, get the
+first response, and encode it to json.
+
+now let's play with it:
+
+.. code:: shell
+
+    $ curl -X POST http://localhost:8080/msgs/mariano/spanish -H "Content-Type: application/json" -d '{"msg": "hola mundo"}'
+    {"id":1,"lat":9001,"lng":9001,"date":1417084202384,"ref":0,"type":0,"msg":"hola mundo"}
+
+    $ curl -X POST http://localhost:8080/msgs/mariano/spanish -H "Content-Type: application/json" -d '{"msg": "hola mundo nuevamente"}'
+    {"id":2,"lat":9001,"lng":9001,"date":1417084204320,"ref":0,"type":0,"msg":"hola mundo nuevamente"}
+
+    $ curl http://localhost:8080/msgs/mariano/spanish\?from\=1\&limit\=1
+    [{"id":1,"lat":9001.0,"lng":9001.0,"date":1417084202384,"ref":0,"type":0,"msg":"hola mundo"}]
+
+    $ curl http://localhost:8080/msgs/mariano/spanish\?from\=1\&limit\=2
+    [{"id":1,"lat":9001.0,"lng":9001.0,"date":1417084202384,"ref":0,"type":0,"msg":"hola mundo"},
+     {"id":2,"lat":9001.0,"lng":9001.0,"date":1417084204320,"ref":0,"type":0,"msg":"hola mundo nuevamente"}]
+
+    $ curl http://localhost:8080/msgs/mariano/spanish\?from\=1\&limit\=20
+    [{"id":1,"lat":9001.0,"lng":9001.0,"date":1417084202384,"ref":0,"type":0,"msg":"hola mundo"},
+     {"id":2,"lat":9001.0,"lng":9001.0,"date":1417084204320,"ref":0,"type":0,"msg":"hola mundo nuevamente"}]
+
+    $ curl http://localhost:8080/msgs/mariano/spanish\?limit\=20
+    [{"id":1,"lat":9001.0,"lng":9001.0,"date":1417084202384,"ref":0,"type":0,"msg":"hola mundo"},
+     {"id":2,"lat":9001.0,"lng":9001.0,"date":1417084204320,"ref":0,"type":0,"msg":"hola mundo nuevamente"}]
+
+    $ curl http://localhost:8080/msgs/mariano/euskera\?limit\=20
+    []
+
+full change here: https://github.com/marianoguerra/flaviodb/commit/4dfcf6ad49250d87bdb1356df3b490826c04fc24
