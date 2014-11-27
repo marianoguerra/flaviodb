@@ -515,6 +515,23 @@ Actually querying vnodes's state
 Tolerating faults in our additions (?)
 --------------------------------------
 
+.. code:: shell-session
+
+   +------+    +---------+    +---------+    +---------+              +------+
+   |      |    |         |    |         |    |         |remaining = 0 |      |
+   | Init +--->| Prepare +--->| Execute +--->| Waiting +------------->| Stop |
+   |      |    |         |    |         |    |         |              |      |
+   +------+    +---------+    +---------+    +-------+-+              +------+
+                                                 ^   | |                    
+                                                 |   | |        +---------+ 
+                                                 +---+ +------->|         | 
+                                                                | Timeout | 
+                                         remaining > 0  timeout |         | 
+                                                                +---------+ 
+
+Tolerating faults in our additions (?)
+--------------------------------------
+
 flavio_vnode.erl
 
 .. class:: prettyprint lang-erlang

@@ -9,6 +9,10 @@
  width: 100% !important;
 }
 
+.reveal pre code{
+ padding: 0 !important;
+}
+
 span.pln, span.com, .generic.output{
  color: #555;
 }
