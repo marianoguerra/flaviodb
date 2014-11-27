@@ -934,6 +934,21 @@ I will add an annex later or comment the code heavily in case you want to
 understand how it works, but just for you to know, I tend to copy those fsms from
 other projects and adapt them to my needs, just don't tell anybody ;)
 
+here is a diagram of how it works::
+
+    +------+    +---------+    +---------+    +---------+              +------+
+    |      |    |         |    |         |    |         |remaining = 0 |      |
+    | Init +--->| Prepare +--->| Execute +--->| Waiting +------------->| Stop |
+    |      |    |         |    |         |    |         |              |      |
+    +------+    +---------+    +---------+    +-------+-+              +------+
+                                                  ^   | |                    
+                                                  |   | |        +---------+ 
+                                                  +---+ +------->|         | 
+                                                                 | Timeout | 
+                                          remaining > 0  timeout |         | 
+                                                                 +---------+ 
+
+
 the code for the "caller/accumulator/waiter/replier" is in
 flavio_io_fsm_sup.erl I did it as generic as I could so you can reuse it
 easily, you have to pass an operation to it by calling flavio_op_fsm:op(N, W,
