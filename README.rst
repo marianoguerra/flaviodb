@@ -1812,7 +1812,7 @@ then we need to add a new app to the list our application depends on, in this ca
 cowboy, we add this to flavio.app.src in the applications section.
 
 if you are using erlang R17 you will get an error compiling bullet, the quick way to fix it for the moment is
-to run this command from the root of the project::
+to run this command from the root of the project:
 
 .. code:: shell
 
