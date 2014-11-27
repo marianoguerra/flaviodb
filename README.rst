@@ -76,8 +76,6 @@ but what can we do with it? well we can ping it:
 
 .. code:: erlang
 
-    ./rel/flavio/bin/flavio console
-
     (flavio@127.0.0.1)1> flavio:ping().
     {pong,1210306043414653979137426502093171875652569137152}
 
@@ -1729,7 +1727,7 @@ is what I got:
 
 .. code:: shell
 
-    tree dev/dev1/flavio_data
+    $ tree dev/dev1/flavio_data
     dev/dev1/flavio_data
     ├── 0
     │   └── patrick
@@ -1760,7 +1758,7 @@ is what I got:
 
     63 directories, 22 files
 
-    ➜  flaviodb git:(master) ✗ tree dev/dev2/flavio_data
+    $ tree dev/dev2/flavio_data
     dev/dev2/flavio_data
     ├── 1118962191081472546749696200048404186924073353216
     │   ├── bob
