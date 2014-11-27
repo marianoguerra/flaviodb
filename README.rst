@@ -1795,3 +1795,211 @@ you can keep playing by adding more messages, and adding more nodes to the
 cluster and see the handoff happen.
 
 all the changes for handoff are here: https://github.com/marianoguerra/flaviodb/commit/4c259862b9b8407e83a88c4566c337d88e59c430
+
+Providing an API
+----------------
+
+first we need to add our new dependencies to rebar.config, we need a web server
+and a way to parse json, we will use cowboy and jsx for that:
+
+.. code:: erlang
+
+    {cowboy, "1.0.0", {git, "https://github.com/ninenines/cowboy", {tag, "1.0.0"}}},
+    {bullet, "0.4.1", {git, "https://github.com/extend/bullet", {tag, "0.4.1"}}},
+    {jsxn, ".*", {git, "https://github.com/talentdeficit/jsxn", {tag, "v2.1.1"}}}
+
+then we need to add a new app to the list our application depends on, in this case
+cowboy, we add this to flavio.app.src in the applications section.
+
+if you are using erlang R17 you will get an error compiling bullet, the quick way to fix it for the moment is
+to run this command from the root of the project::
+
+.. code:: shell
+
+    printf '0a\n%%%% coding: latin-1\n.\nw\n' | ed deps/bullet/src/bullet_handler.erl
+
+it will add a header to that file specifying the encoding to let it compile.
+
+then we need to start the web server and register some handlers, we will start
+by implementing a way to post a new message, this will expose the flavio:post_msg
+function through a HTTP API for this we need to add some code to flavio_app.erl
+when the server starts to register and start the server, the start function will
+end up looking like this:
+
+.. code:: erlang
+
+    start(_StartType, _StartArgs) ->
+        Dispatch = cowboy_router:compile([
+            {'_', [{"/msgs/:user/:topic", handler_flavio_msgs, []}]}
+        ]),
+        ApiPort = 8080,
+        ApiAcceptors = 100,
+        {ok, _} = cowboy:start_http(http, ApiAcceptors, [{port, ApiPort}], [
+            {env, [{dispatch, Dispatch}]}
+        ]),
+
+        case flavio_sup:start_link() of
+            {ok, Pid} ->
+                ok = riak_core:register([{vnode_module, flavio_vnode}]),
+
+                ok = riak_core_ring_events:add_guarded_handler(flavio_ring_event_handler, []),
+                ok = riak_core_node_watcher_events:add_guarded_handler(flavio_node_event_handler, []),
+                ok = riak_core_node_watcher:service_up(flavio, self()),
+
+                {ok, Pid};
+            {error, Reason} ->
+                {error, Reason}
+        end.
+
+.. code:: erlang
+
+        Dispatch = cowboy_router:compile([
+            {'_', [{"/msgs/:user/:topic", handler_flavio_msgs, []}]}
+        ]),
+
+here we compile our routes, we will call handler_flavio_msgs handler when a
+request is done to /msgs/:user/:topic, here :user and :topic are placeholders
+and will allow use to retrieve its content when we handle the request.
+
+.. code:: erlang
+
+        {ok, _} = cowboy:start_http(http, ApiAcceptors, [{port, ApiPort}], [
+            {env, [{dispatch, Dispatch}]}
+        ]),
+
+then we start the server with our routes and some parameters.
+
+now we have to implement handler_flavio_msgs, it's documented in detail in the
+`cowboy documentation <http://ninenines.eu/docs/en/cowboy/1.0/>`_, I will just cover
+the interesting parts here.
+
+.. code:: erlang
+
+    -record(state, {username, topic}).
+
+    init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
+
+    rest_init(Req, []) ->
+        {Username, Req1} = cowboy_req:binding(username, Req),
+        {Topic, Req2} = cowboy_req:binding(topic, Req1),
+
+        {ok, Req2, #state{username=Username, topic=Topic}}.
+
+we declare a state record that will contain the information about a request,
+then on init we tell cowboy this is a rest handler.
+
+on rest_init we extract the :username and :topic placeholders and set it to
+state so we can access it later.
+
+.. code:: erlang
+
+    allowed_methods(Req, State) -> {[<<"POST">>], Req, State}.
+
+we only handle POST in this handler
+
+.. code:: erlang
+
+    content_types_accepted(Req, State) ->
+        {[{{<<"application">>, <<"json">>, '*'}, from_json}], Req, State}.
+
+we only handle requests where content type is application/json, when that's the
+content type we want the from_json function to be called.
+
+and now, the interesting part, the from_json function:
+
+.. code:: erlang
+
+    from_json(Req, State=#state{username=Username, topic=Topic}) ->
+        {ok, Body, Req1} = cowboy_req:body(Req),
+        case jsx:is_json(Body) of
+            true ->
+                Data = jsx:decode(Body),
+                Msg = proplists:get_value(<<"msg">>, Data, nil),
+
+                if is_binary(Msg) ->
+                       {ok, [FirstResponse|_]} = flavio:post_msg(Username, Topic, Msg),
+                       {{ok, Entity}, _Partition} = FirstResponse,
+                       EntityPList = fixstt:to_proplist(Entity),
+                       EntityJson = jsx:encode(EntityPList),
+                       response(Req, State, EntityJson);
+                   true ->
+                       bad_request(Req1, State, <<"{\"type\": \"no-msg\"}">>)
+                end;
+            false ->
+                bad_request(Req1, State, <<"{\"type\": \"invalid-body\"}">>)
+        end.
+
+we do some extra error checking to provide better error reporting, I think
+some of this code should go in other cowboy callbacks, but to keep it simple
+let's leave it as is.
+
+we extract the body and check if it's json, if it is we decode it and get the
+msg field from the object, if the msg field is a string (binary here) then we
+proceed to post the message using the username and topic we extracted before
+from the url.
+
+remember that the response contains N responses from N vnodes, we just get
+the first one (no consistency checking), extract the entity, convert it to
+JSON and return it as the body of the response.
+
+now build a new release and let's play with it:
+
+.. code:: shell
+
+    $ curl -X POST http://localhost:8080/msgs/mariano/english -H "Content-Type: application/json" -d '{"msg": "hello world"}'
+    {"id":1,"lat":9001,"lng":9001,"date":1417081176410,"ref":0,"type":0,"msg":"hello world"}
+
+    $ curl -X POST http://localhost:8080/msgs/mariano/english -H "Content-Type: application/json" -d '{"msg": "hello world again"}'
+    {"id":2,"lat":9001,"lng":9001,"date":1417081185756,"ref":0,"type":0,"msg":"hello world again"}
+
+    $ curl -X POST http://localhost:8080/msgs/mariano/spanish -H "Content-Type: application/json" -d '{"msg": "hola mundo"}'
+    {"id":1,"lat":9001,"lng":9001,"date":1417081201062,"ref":0,"type":0,"msg":"hola mundo"}
+
+    $ curl -X POST http://localhost:8080/msgs/mariano/spanish -H "Content-Type: application/json" -d '{"msg": "hola mundo nuevamente"}'
+    {"id":2,"lat":9001,"lng":9001,"date":1417081204533,"ref":0,"type":0,"msg":"hola mundo nuevamente"}
+
+
+the happy path works fine, let's try the unhappy ones:
+
+.. code:: shell
+
+    curl -X POST http://localhost:8080/msgs/mariano/spanish -H "Content-Type: application/xml" -d '{"msg": "hola mundo nuevamente"}' -v
+
+    * Connected to localhost (127.0.0.1) port 8080 (#0)
+    > POST /msgs/mariano/spanish HTTP/1.1
+    > User-Agent: curl/7.37.1
+    > Host: localhost:8080
+    > Accept: */*
+    > Content-Type: application/xml
+    > Content-Length: 32
+    >
+    < HTTP/1.1 415 Unsupported Media Type
+
+    curl -X PUT http://localhost:8080/msgs/mariano/spanish -H "Content-Type: application/json" -d '{"msg": "hola mundo nuevamente"}' -v
+    > PUT /msgs/mariano/spanish HTTP/1.1
+    > User-Agent: curl/7.37.1
+    > Host: localhost:8080
+    > Accept: */*
+    > Content-Type: application/json
+    > Content-Length: 32
+    >
+    < HTTP/1.1 405 Method Not Allowed
+
+    curl -X POST http://localhost:8080/msgs/mariano/spanish -H "Content-Type: application/json" -d 'this is not json'
+    {"type": "invalid-body"}
+
+    curl -X POST http://localhost:8080/msgs/mariano/spanish -H "Content-Type: application/json" -d '{}' -v
+    > POST /msgs/mariano/spanish HTTP/1.1
+    > User-Agent: curl/7.37.1
+    > Host: localhost:8080
+    > Accept: */*
+    > Content-Type: application/json
+    > Content-Length: 2
+    >
+    < HTTP/1.1 400 Bad Request
+
+    {"type": "no-msg"}
+
+cowboy takes care of handling the other cases for us :)
+
+the full change is here: https://github.com/marianoguerra/flaviodb/commit/416528e6f8a1cd1cfd2f789dd87d1afc761485c6
