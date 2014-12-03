@@ -1,9 +1,13 @@
-FlavioDB
---------
+Riak Core in Small Bytes
+------------------------
 
-a riak_core application in small bytes.
+.. image:: flavio.jpg
+   :align: center
+   :width: 50%
 
-Mariano Guerra, Berlin EFL 2014
+Lessons learned while developing `IorioDB <https://github.com/marianoguerra/ioriodb>`_
+
+Mariano Guerra, EFL Berlin 2014
 
 Warning
 -------
@@ -15,6 +19,56 @@ Warning
 * That repo has the longest readme ever
 * With all the details of this talk and more
 * This slides will be available there as well
+
+Things that I won't cover
+-------------------------
+
+but you should check
+
+CAP
+---
+
+.. image:: cap.png
+   :align: center
+
+"The Ring"
+----------
+
+.. image:: riak-ring.png
+   :align: center
+
+CRDTs
+-----
+
+.. image:: crdts.jpg
+   :align: center
+
+Leslie Lamport
+--------------
+
+.. image:: leslie-lamport.gif
+   :align: center
+
+Jepsen
+------
+
+.. image:: aphyr.png
+   :align: center
+
+Kyle Kingsbury aka @aphyr
+
+Also...
+-------
+
+Don't tell Kyle Kingsbury I'm developing a data store :P
+
+Let's Start
+-----------
+
+But before some questions
+
+* Do you know riak?
+* Do you know riak_core? at least from name?
 
 Setup rebar riak_core template
 ------------------------------
@@ -151,6 +205,8 @@ Creating a local cluster
 
     make devrel
 
+Output
+
 .. code:: shell-session
 
     mkdir -p dev
@@ -239,7 +295,7 @@ Actually clustering the nodes 1
     joining     0.0%      --      'flavio4@127.0.0.1'
     valid     100.0%      --      'flavio1@127.0.0.1'
     -------------------------------------------------------------------------------
-    Valid:1 / Leaving:0 / Exiting:0 / Joining:3 / Down:0dev/dev1/bin/flavio-admin member-status
+    Valid:1 / Leaving:0 / Exiting:0 / Joining:3 / Down:0
 
 
 Actually clustering the nodes 2
@@ -312,7 +368,7 @@ From node 1:
 .. code:: shell-session
 
     $ dev/dev1/bin/flavio attach
-    Attaching to /tmp//home/mariano/src/rct/flaviodb/dev/dev1/erlang.pipe.1 (^D to exit)
+    Attaching to /tmp/.../flaviodb/dev/dev1/erlang.pipe.1 (^D to exit)
 
 .. class:: prettyprint lang-erlang
 .. code:: erlang
@@ -329,7 +385,7 @@ From node 3:
 .. code:: shell-session
 
     $ dev/dev3/bin/flavio attach
-    Attaching to /tmp//home/mariano/src/rct/flaviodb/dev/dev3/erlang.pipe.1 (^D to exit)
+    Attaching to /tmp/.../flaviodb/dev/dev3/erlang.pipe.1 (^D to exit)
 
 .. class:: prettyprint lang-erlang
 .. code:: erlang
@@ -738,6 +794,8 @@ and the implementation:
         Streams = lists:sort(list_streams(State, Username)),
         {reply, {RefId, {ok, Streams}}, State};
 
+list users is implemented similarly
+
 Handoff
 -------
 
@@ -943,11 +1001,12 @@ Providing an API
 .. code:: erlang
 
     {cowboy, "1.0.0", {git, "https://github.com/ninenines/cowboy", {tag, "1.0.0"}}},
-    {bullet, "0.4.1", {git, "https://github.com/extend/bullet", {tag, "0.4.1"}}},
     {jsxn, ".*", {git, "https://github.com/talentdeficit/jsxn", {tag, "v2.1.1"}}}
 
 Start cowboy on server startup
 ------------------------------
+
+flavio_app.erl
 
 .. class:: prettyprint lang-erlang
 .. code:: erlang
@@ -965,6 +1024,8 @@ Start cowboy on server startup
 
 Implement the request handler
 -----------------------------
+
+handler_flavio_msgs.erl
 
 .. class:: prettyprint lang-erlang
 .. code:: erlang
@@ -1112,8 +1173,11 @@ Next Steps
 ----------
 
 * cache stream handles
+
   + instead of open/close for each request
+
 * pub/sub for users/topics with bullet
+* riak_core_security for auth/permissions
 * a web ui
 
 Thanks!
@@ -1121,5 +1185,5 @@ Thanks!
 
 * https://github.com/marianoguerra/flaviodb
 * https://github.com/marianoguerra/ioriodb
-* @EventFabricApp
-* @warianoguerra
+* `@EventFabricApp <http://twitter.com/EventFabricApp>`_
+* `@warianoguerra <http://twitter.com/warianoguerra>`_

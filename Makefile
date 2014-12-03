@@ -29,7 +29,7 @@ stage : rel
 	$(foreach app,$(wildcard apps/*), rm -rf rel/flavio/lib/$(shell basename $(app))-* && ln -sf $(abspath $(app)) rel/flavio/lib;)
 
 slides:
-	rst2html5 --pretty-print-code --jquery --reveal-js --stylesheet-path=presentation.css presentation.rst > presentation.html
+	rst2html5 --pretty-print-code --jquery --reveal-js --stylesheet-path=talk/presentation.css talk/presentation.rst > talk/presentation.html
 
 ##
 ## Developer targets
