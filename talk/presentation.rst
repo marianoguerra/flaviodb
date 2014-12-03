@@ -1,7 +1,7 @@
 Riak Core in Small Bytes
 ------------------------
 
-.. image:: flavio.jpg
+.. image:: talk/flavio.jpg
    :align: center
    :width: 50%
 
@@ -28,31 +28,31 @@ but you should check
 CAP
 ---
 
-.. image:: cap.png
+.. image:: talk/cap.png
    :align: center
 
 "The Ring"
 ----------
 
-.. image:: riak-ring.png
+.. image:: talk/riak-ring.png
    :align: center
 
 CRDTs
 -----
 
-.. image:: crdts.jpg
+.. image:: talk/crdts.jpg
    :align: center
 
 Leslie Lamport
 --------------
 
-.. image:: leslie-lamport.gif
+.. image:: talk/leslie-lamport.gif
    :align: center
 
 Jepsen
 ------
 
-.. image:: aphyr.png
+.. image:: talk/aphyr.png
    :align: center
 
 Kyle Kingsbury aka @aphyr
