@@ -37,6 +37,11 @@ CAP
 .. image:: talk/riak-ring.png
    :align: center
 
+Consensus
+---------
+
+Paxos, MultiPaxos, Raft
+
 CRDTs
 -----
 
